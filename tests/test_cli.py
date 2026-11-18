@@ -37,3 +37,11 @@ def test_overlaps_only(tmp_path):
     run(tmp_path, "--no-review")
     p = run(tmp_path, "--overlaps-only")
     assert p.returncode == 0 and "TOTAL new overlaps: 0" in p.stdout
+
+
+def test_cli_malformed_order_glossary(tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    (tmp_path / "glossary.yaml").write_text("phrases: [unclosed\n", encoding="utf-8")
+    p = run(tmp_path, "--no-review")
+    assert p.returncode == 1
+    assert "glossary.yaml" in p.stderr and "Traceback" not in p.stderr

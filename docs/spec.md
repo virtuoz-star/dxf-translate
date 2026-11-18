@@ -60,16 +60,16 @@ with a `gui` extra — the contract below is what matters.)
 
 Input: a list of paths (files and/or folders) and optional output dir.
 
-1. Collect `*.dxf` (case-insensitive) from given paths (folders: non-recursive).
+1. Collect `*.dxf` (case-insensitive) from given paths (folders are scanned recursively; sub-folders named `EN`, `*_EN.dxf` and `~$*` files are skipped).
 2. Collect `*.xlsx`; classify as UA if its cells contain Cyrillic, EN otherwise.
    Exactly one UA + one EN → used as translation source. None → warning
    "Excel not found", continue with glossary only. Ambiguous → error with message.
 3. Glossary = base `glossary.yaml` merged with optional `glossary.yaml` in the
    order folder (order entries win).
-4. Translate every DXF → `<input>/EN/dxf/*_EN.dxf` and `<input>/EN/pdf/*.pdf`
+4. Translate every DXF → `<out>/dxf/*_EN.dxf` and `<out>/pdf/*.pdf`, where default `<out>` = `<first dropped folder>/EN` (or `<folder of first DXF>/EN` if only files were given)
    (same naming as today).
 5. Run overlap check against sources.
-6. Build review page `<input>/EN/review/index.html`.
+6. Build review page `<out>/review/index.html`.
 7. Return a result object: sheets translated, failures (per file, with message),
    missing translations (unique texts, with file names where seen), overlaps
    (per file, text, count), paths of output/review.

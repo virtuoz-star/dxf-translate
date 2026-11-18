@@ -89,3 +89,50 @@ def test_collect_skips_en_and_dedups(tmp_path):
     (tmp_path / "EN" / "x.dxf").write_bytes(b"")
     dxfs, _ = collect_inputs([tmp_path, tmp_path / "a.dxf"])
     assert [p.name for p in dxfs] == ["a.dxf"]
+
+
+def test_order_root_recursive(tmp_path):
+    (tmp_path / "dxf").mkdir()
+    make_sheet(tmp_path / "dxf" / "a.dxf")
+    _xlsx(tmp_path / "ua.xlsx", "Балка")
+    _xlsx(tmp_path / "en.xlsx", "Beam")
+    r = run_job([tmp_path], review=False)
+    assert r.out_dir == tmp_path / "EN" and len(r.sheets) == 1 and r.excel
+    assert run_job([tmp_path], review=False).sheets.__len__() == 1   # rerun skips EN/
+
+
+def test_order_under_EN_parent(tmp_path):
+    root = tmp_path / "EN" / "order"
+    (root / "dxf").mkdir(parents=True)
+    make_sheet(root / "dxf" / "a.dxf")
+    r = run_job([root], review=False)
+    assert len(r.sheets) == 1 and r.out_dir == root / "EN"
+
+
+def test_overlap_and_review_failures_do_not_abort(tmp_path, monkeypatch):
+    import dxf_translate.pipeline as pl
+    make_sheet(tmp_path / "a.dxf", name="Невідома деталь")
+    monkeypatch.setattr(pl, "find_overlaps", lambda *a: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(pl, "build_review", lambda *a: (_ for _ in ()).throw(RuntimeError("bang")))
+    r = pl.run_job([tmp_path])
+    assert len(r.sheets) == 1 and r.missing and r.review is None
+    assert any("overlap check: RuntimeError" in m for _, m in r.failed)
+    assert any("review failed" in w for w in r.warnings)
+    assert r.exit_code == 1
+
+
+def test_corrupt_xlsx(tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    (tmp_path / "bad.xlsx").write_bytes(b"not a zip")
+    with pytest.raises(GlossaryError):
+        run_job([tmp_path])
+    assert not (tmp_path / "EN").exists()
+
+
+def test_xlsx_missing_columns(tmp_path):
+    import openpyxl
+    make_sheet(tmp_path / "a.dxf")
+    for n, v in (("ua", "Матеріал"), ("en", "Material")):
+        wb = openpyxl.Workbook(); wb.active["A1"] = v; wb.save(tmp_path / f"{n}.xlsx")
+    with pytest.raises(GlossaryError, match="xlsx"):
+        run_job([tmp_path])
