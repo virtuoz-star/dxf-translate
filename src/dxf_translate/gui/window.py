@@ -18,7 +18,11 @@ from dxf_translate.gui import texts
 from dxf_translate.gui.worker import JobWorker
 from dxf_translate.pipeline import JobResult
 
-SECTIONS = {"phrase": "phrases", "note": "notes"}     # `part` rows are fixed in Excel
+SECTIONS = {"phrase": "phrases", "note": "notes"}     # `part`/`excel` rows: fix the translation file
+
+
+def is_translation_file(p: Path) -> bool:
+    return p.suffix.lower() == ".xlsx" and not p.name.startswith("~$")
 
 
 class MainWindow(QMainWindow):
@@ -29,6 +33,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(texts.WINDOW_TITLE)
         self.resize(960, 760)
         self.last_paths: list[Path] = []
+        self.translations: Path | None = None   # kept until the window closes (reused on rerun)
         self.result: JobResult | None = None
         self.worker: JobWorker | None = None
         self._thread: QThread | None = None
@@ -63,6 +68,24 @@ class MainWindow(QMainWindow):
         row.addWidget(self.version_label)
         lay.addLayout(row)
 
+        self.translations_box = QGroupBox(texts.TRANSLATIONS_TITLE)
+        tl = QHBoxLayout(self.translations_box)
+        self.translations_label = QLabel(texts.NO_TRANSLATIONS)
+        self.translations_label.setWordWrap(True)
+        self.translations_label.setMinimumHeight(40)
+        self.translations_label.setStyleSheet(
+            "QLabel { border: 2px dashed palette(mid); border-radius: 6px; padding: 4px 8px; }")
+        self.choose_translations_btn = QPushButton(texts.CHOOSE_TRANSLATIONS)
+        self.choose_translations_btn.clicked.connect(self._choose_translations)
+        self.clear_translations_btn = QPushButton(texts.CLEAR_TRANSLATIONS)
+        self.clear_translations_btn.setToolTip(texts.CLEAR_TRANSLATIONS_TIP)
+        self.clear_translations_btn.setFixedWidth(32)
+        self.clear_translations_btn.clicked.connect(lambda: self.set_translations(None))
+        tl.addWidget(self.translations_label, 1)
+        tl.addWidget(self.choose_translations_btn)
+        tl.addWidget(self.clear_translations_btn)
+        lay.addWidget(self.translations_box)
+
         self.progress = QProgressBar()
         self.progress.setValue(0)
         lay.addWidget(self.progress)
@@ -78,6 +101,17 @@ class MainWindow(QMainWindow):
             " border-radius: 4px; padding: 6px; }")
         self.excel_warning.hide()
         lay.addWidget(self.excel_warning)
+
+        row = QHBoxLayout()
+        self.en_list_label = QLabel("")
+        self.open_en_list_btn = QPushButton(texts.OPEN_EN_LIST)
+        self.open_en_list_btn.clicked.connect(self._open_en_list)
+        row.addWidget(self.en_list_label)
+        row.addWidget(self.open_en_list_btn)
+        row.addStretch(1)
+        self.en_list_label.hide()
+        self.open_en_list_btn.hide()
+        lay.addLayout(row)
 
         self.failures_box = QGroupBox(texts.FAILURES)
         fl = QVBoxLayout(self.failures_box)
@@ -148,14 +182,44 @@ class MainWindow(QMainWindow):
         self.handle_urls(urls)
 
     def handle_urls(self, urls: list[QUrl]) -> None:
-        paths = [Path(u.toLocalFile()) for u in urls if u.isLocalFile()]
-        if paths:
-            self.start(paths)
+        self.handle_paths([Path(u.toLocalFile()) for u in urls if u.isLocalFile()])
+
+    def handle_paths(self, paths: list[Path]) -> None:
+        """A dropped / chosen `.xlsx` becomes the translation file; everything else is the DXF
+        input. A drop of only a translation file just selects it (no job starts)."""
+        xlsx = [p for p in paths if p.is_file() and is_translation_file(p)]
+        rest = [p for p in paths if p not in xlsx]
+        if len(xlsx) > 1:
+            QMessageBox.warning(self, texts.INFO_TITLE, texts.SEVERAL_TRANSLATIONS)
+            return
+        if xlsx:
+            self.set_translations(xlsx[0])
+        if rest:
+            self.start(rest)
+
+    def set_translations(self, path: Path | None) -> None:
+        if self.busy:
+            return
+        self.translations = Path(path) if path else None
+        if self.translations:
+            self.translations_label.setText(self.translations.name)
+            self.translations_label.setToolTip(str(self.translations))
+            self.log.appendPlainText(texts.LOG_TRANSLATIONS.format(path=self.translations))
+        else:
+            self.translations_label.setText(texts.NO_TRANSLATIONS)
+            self.translations_label.setToolTip("")
+        self._refresh_controls()
 
     def _choose_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, texts.CHOOSE_FILES_TITLE, "", texts.FILE_FILTER)
         if files:
-            self.start([Path(f) for f in files])
+            self.handle_paths([Path(f) for f in files])
+
+    def _choose_translations(self) -> None:
+        f, _ = QFileDialog.getOpenFileName(self, texts.CHOOSE_TRANSLATIONS_TITLE, "",
+                                           texts.TRANSLATIONS_FILTER)
+        if f:
+            self.set_translations(Path(f))
 
     def _choose_folder(self) -> None:
         d = QFileDialog.getExistingDirectory(self, texts.CHOOSE_FOLDER_TITLE)
@@ -180,7 +244,7 @@ class MainWindow(QMainWindow):
         self._gc_paused = gc.isenabled()
         gc.disable()
         self._thread = QThread(self)
-        self.worker = JobWorker(self.last_paths)
+        self.worker = JobWorker(self.last_paths, self.translations)
         self.worker.moveToThread(self._thread)
         self._thread.started.connect(self.worker.run)
         self.worker.progress.connect(self._on_progress)
@@ -245,6 +309,15 @@ class MainWindow(QMainWindow):
         self.counts_label.setText(texts.COUNTS.format(
             ok=len(res.sheets), failed=len(res.failed), overlaps=len(res.overlaps)))
         self.excel_warning.setVisible("no_excel" in res.warnings)
+        en_failed = any(w.startswith("en_list_failed:") for w in res.warnings)
+        if res.en_list:
+            self.en_list_label.setText(texts.EN_LIST.format(name=res.en_list.name))
+            self.en_list_label.setToolTip(str(res.en_list))
+        elif en_failed:
+            self.en_list_label.setText(texts.EN_LIST_FAILED)
+            self.en_list_label.setToolTip("")
+        self.en_list_label.setVisible(bool(res.en_list) or en_failed)
+        self.open_en_list_btn.setVisible(bool(res.en_list))
 
         self.failures_list.clear()
         for name, msg in res.failed:
@@ -267,15 +340,22 @@ class MainWindow(QMainWindow):
             src = QTableWidgetItem(m.text)
             src.setData(Qt.UserRole, (m.text, m.kind))
             kind = QTableWidgetItem(texts.KINDS.get(m.kind, m.kind))
-            files = QTableWidgetItem(", ".join(m.files))
+            shown_files = m.files or ([res.translations.path.name]
+                                      if m.kind == "excel" and res.translations else [])
+            files = QTableWidgetItem(", ".join(shown_files))
             for it in (src, kind, files):
                 it.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 it.setToolTip(it.text())
             if m.kind in SECTIONS:
                 en = QTableWidgetItem("")
             else:
-                en = QTableWidgetItem(texts.PART_FIX_EXCEL)
+                if m.kind == "excel":
+                    col, _, pn = m.hint.partition(" · ")
+                    en = QTableWidgetItem(texts.EXCEL_HINT.format(col=col, pn=pn))
+                else:
+                    en = QTableWidgetItem(texts.PART_FIX_EXCEL)
                 en.setFlags(Qt.ItemIsEnabled)
+                en.setToolTip(en.text())
                 en.setForeground(self.palette().color(QPalette.PlaceholderText))
             for c, it in enumerate((src, kind, files, en)):
                 t.setItem(r, c, it)
@@ -301,7 +381,10 @@ class MainWindow(QMainWindow):
         self.drop_label.setText(texts.DROP_HINT if idle else texts.DROP_BUSY)
         self.choose_btn.setEnabled(idle)
         self.folder_btn.setEnabled(idle)
+        self.choose_translations_btn.setEnabled(idle)
+        self.clear_translations_btn.setEnabled(idle and self.translations is not None)
         res = self.result
+        self.open_en_list_btn.setEnabled(idle and bool(res and res.en_list and res.en_list.is_file()))
         editable = bool(res and any(m.kind in SECTIONS for m in res.missing))
         self.save_btn.setEnabled(idle and editable and bool(self.last_paths))
         self.open_dir_btn.setEnabled(idle and bool(res) and res.out_dir.is_dir())
@@ -345,6 +428,10 @@ class MainWindow(QMainWindow):
     def _open_dir(self) -> None:
         if self.result:
             self._open(self.result.out_dir)
+
+    def _open_en_list(self) -> None:
+        if self.result and self.result.en_list:
+            self._open(self.result.en_list)
 
     def _open_review(self) -> None:
         if self.result and self.result.review:

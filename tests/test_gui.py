@@ -247,3 +247,137 @@ def test_failures_explained_in_ukrainian(qtbot, window, tmp_path):
     assert item.text() == f"a.dxf: {texts.FILE_IN_USE}" and item.toolTip() == tech
     log = window.log.toPlainText()
     assert tech in log and texts.REVIEW_FAILED in log
+
+
+# --- translation file input ------------------------------------------------------
+
+TR_HEAD = ["Позначення", "Назва", "Name", "Матеріал", "Material"]
+
+
+def _translations(path, rows):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    for r in [TR_HEAD] + rows:
+        wb.active.append(r)
+    wb.save(path)
+    return path
+
+
+def _drop(window, paths):
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(p)) for p in paths])
+    window.dropEvent(QDropEvent(QPointF(10, 10), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier))
+
+
+def test_xlsx_drop_sets_translations(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf", name="Невідома деталь")
+    t = _translations(tmp_path / "t.xlsx", [["AS1.001", "Невідома деталь", "Mystery part",
+                                             "Лист 3 алюм.", "Sheet 3 Al"]])
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        _drop(window, [t, tmp_path])
+    assert window.translations == t and window.last_paths == [tmp_path]
+    assert window.translations_label.text() == "t.xlsx"
+    assert window.result.translations is not None and window.result.missing == []
+    assert not window.excel_warning.isVisibleTo(window)
+
+
+def test_xlsx_alone_only_sets_translations(qtbot, window, tmp_path):
+    t = _translations(tmp_path / "T.XLSX", [])
+    _drop(window, [t])
+    assert window.translations == t and not window.busy and window.last_paths == []
+    assert window.clear_translations_btn.isEnabled()
+
+
+def test_translations_reused_on_rerun_and_cleared(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf", name="Невідома деталь")
+    t = _translations(tmp_path / "t.xlsx", [["AS1.001", "Балка", "Beam", "Лист 3 алюм.", "Sheet 3 Al"]])
+    window.set_translations(t)
+    _run(qtbot, window, [tmp_path])
+    assert window.result.translations.path == t
+    window.missing_table.item(0, 3).setText("Mystery part")
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.save_btn.click()
+    assert window.result.translations.path == t and window.result.en_list.is_file()
+    window.clear_translations_btn.click()
+    assert window.translations is None and window.translations_label.text() == texts.NO_TRANSLATIONS
+    assert not window.clear_translations_btn.isEnabled()
+    _run(qtbot, window, [tmp_path])
+    assert window.result.translations is None and window.excel_warning.isVisibleTo(window)
+    assert window.excel_warning.text() == texts.NO_EXCEL
+
+
+def test_translation_controls_disabled_while_running(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    window.set_translations(_translations(tmp_path / "t.xlsx", []))
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.start([tmp_path])
+        assert not window.choose_translations_btn.isEnabled()
+        assert not window.clear_translations_btn.isEnabled()
+    assert window.choose_translations_btn.isEnabled() and window.clear_translations_btn.isEnabled()
+
+
+def test_excel_missing_row_readonly_with_hint(qtbot, window, tmp_path):
+    from dxf_translate.pipeline import JobResult, MissingText
+    res = JobResult(out_dir=tmp_path / "EN", order_dir=tmp_path,
+                    missing=[MissingText("Кришка", "excel", [], "Name · AS1.009")])
+    window.show_result(res)
+    t = window.missing_table
+    hint = texts.EXCEL_HINT.format(col="Name", pn="AS1.009")
+    assert hint == "Впишіть у файл перекладу, колонка Name (AS1.009)"
+    assert t.item(0, 0).text() == "Кришка" and t.item(0, 1).text() == "файл перекладу"
+    assert t.item(0, 3).text() == hint and t.item(0, 3).toolTip() == hint
+    assert not t.item(0, 3).flags() & Qt.ItemIsEditable
+    assert window.collect_terms() == {}
+    assert not window.save_btn.isEnabled()
+
+
+def test_en_list_button(qtbot, window, tmp_path, monkeypatch):
+    from dxf_translate.gui import window as window_mod
+    make_sheet(tmp_path / "a.dxf")
+    window.set_translations(_translations(tmp_path / "List.xlsx", [["AS1.001", "Балка", "Beam",
+                                                                    "Лист 3 алюм.", "Sheet 3 Al"]]))
+    assert not window.en_list_label.isVisibleTo(window)
+    _run(qtbot, window, [tmp_path])
+    assert window.en_list_label.isVisibleTo(window)
+    assert window.en_list_label.text() == "Англійський виробничий список: List_EN.xlsx"
+    assert window.open_en_list_btn.isEnabled() and window.open_en_list_btn.text() == "Відкрити список"
+    opened = []
+    monkeypatch.setattr(window_mod.QDesktopServices, "openUrl", lambda u: opened.append(u.toLocalFile()))
+    window.open_en_list_btn.click()
+    assert [Path(u) for u in opened] == [tmp_path / "EN" / "List_EN.xlsx"]
+
+
+def test_en_list_failed_and_formula_explained(qtbot, window, tmp_path):
+    from dxf_translate.pipeline import JobResult
+    res = JobResult(out_dir=tmp_path / "EN", order_dir=tmp_path, warnings=[
+        "en_list_failed: PermissionError: [Errno 13] Permission denied: 'List_EN.xlsx'",
+        "en_list_formula: formula in F4 (=G3) refers to dropped column Матеріал"])
+    window.show_result(res)
+    assert window.en_list_label.isVisibleTo(window)
+    assert window.en_list_label.text() == texts.EN_LIST_FAILED
+    assert texts.EN_LIST_FAILED == "Не вдалося записати англійський список (файл відкритий у Excel?)"
+    assert not window.open_en_list_btn.isVisibleTo(window)
+    log = window.log.toPlainText()
+    assert texts.EN_LIST_FAILED in log and texts.EN_LIST_FORMULA in log
+
+
+def test_bad_translation_file_error_in_ukrainian(qtbot, window, tmp_path, monkeypatch):
+    make_sheet(tmp_path / "a.dxf")
+    bad = tmp_path / "old.xlsx"
+    import openpyxl
+    wb = openpyxl.Workbook(); wb.active.append(["Позначення", "Назва", "Матеріал"]); wb.save(bad)
+    calls = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: calls.append(a))
+    window.set_translations(bad)
+    _run(qtbot, window, [tmp_path])
+    assert calls and calls[0][2].startswith(texts.NOT_TRANSLATION_FILE)
+
+
+def test_worker_passes_translations(qtbot, monkeypatch, tmp_path):
+    from dxf_translate.gui import worker as worker_mod
+    seen = {}
+    monkeypatch.setattr(worker_mod, "run_job", lambda paths, **k: seen.update(k) or "res")
+    w = worker_mod.JobWorker([tmp_path], tmp_path / "t.xlsx")
+    with qtbot.waitSignal(w.finished, timeout=T):
+        w.run()
+    assert seen["translations"] == tmp_path / "t.xlsx"

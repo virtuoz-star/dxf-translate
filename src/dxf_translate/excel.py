@@ -115,7 +115,7 @@ def _shift_ref(ref: str, new_col: dict[int, int], sheet: str) -> str:
     """Rewrite one RANGE operand (`A1`, `$F$5`, `A1:B2`, `F:F`, `3:3`, `Sheet1!F5`) through the
     column mapping. Other sheets, names and anything unrecognised stay as they are."""
     prefix, sep, body = ref.rpartition("!")
-    if sep and prefix.strip("'").replace("''", "'") != sheet:
+    if sep and prefix.strip("'").replace("''", "'").casefold() != sheet.casefold():
         return ref
     parts = body.split(":")
     if len(parts) > 2:

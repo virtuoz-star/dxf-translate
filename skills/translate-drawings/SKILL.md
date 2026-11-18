@@ -40,7 +40,7 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate --crop "<out>/pdf/<sheet>
    - If wording cannot fix it, edit the output DXF in `<out>/dxf/` (e.g. with ezdxf via `uv run --project "<plugin root>" python …`) and verify with `--overlaps-only` on the same input path (it prints `checked N of M sheet(s)`; `!! SKIPPED` = no output for that sheet, exit 1 if nothing was checked). A later full run overwrites such manual edits — tell the user.
    - Done = `TOTAL new overlaps: 0`, or the user explicitly accepted each remaining listed overlap.
 5. **Always** run the overlap check after translating (every full run does it). Never declare success without seeing `TOTAL new overlaps: 0` in the latest output.
-6. **Report** to the user: number of sheets translated, failures (file + message), terms you added (and where), remaining overlaps if accepted, and the paths of `<out>/pdf/` and the review page `<out>/review/index.html`.
+6. **Report** to the user: number of sheets translated, failures (file + message), terms you added (and where), remaining overlaps if accepted, and the paths of `<out>/pdf/`, the English production list (`EN production list: <out>/<file>_EN.xlsx`, when a translation file was given; `en_list_failed:` = it could not be written, usually open in Excel; `en_list_formula:` = a formula cell left empty because it pointed into a dropped UA column) and the review page `<out>/review/index.html`.
 
 ## Target EN layout rules (spec §4.5)
 
@@ -53,5 +53,5 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate --crop "<out>/pdf/<sheet>
 - tolerances unchanged
 - "Розгортка" → "Flat pattern"
 - US "Aluminum"
-- BOM/Excel material strings identical
+- BOM / translation-file material strings identical
 - always run the overlap checker after translating; never trust downscaled previews.

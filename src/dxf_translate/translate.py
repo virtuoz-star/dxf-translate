@@ -361,7 +361,7 @@ def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
     if not lead and notes_ent is None:
         manual = next((m for m in msp.query("MTEXT") if "Part No.:" in m.plain_text()), None)
     if manual is not None:
-        # a sheet translated by hand earlier: keep its notes, take name/material from Excel
+        # a sheet translated by hand earlier: keep its notes, take name/material from the translation file
         style = manual.dxf.style
         h_mm = manual.dxf.char_height / k
         lines = [l.strip() for l in manual.plain_text().split("\n") if l.strip()]
@@ -384,7 +384,7 @@ def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
             manual_info.append(f"Material: {xl_mat or kv['Material']}")
         manual_info += extra                     # e.g. "Sheet 1"
         if pn and pn not in g.parts:
-            missing.add(f"(Part No. {pn} not in Excel)", "part", pn)
+            missing.add(f"(Part No. {pn} not in translation file)", "part", pn)
         msp.delete_entity(manual)
     elif notes_ent is not None:
         style = notes_ent.dxf.style

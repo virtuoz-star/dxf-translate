@@ -2,13 +2,30 @@
 
 Translates Ukrainian SolidWorks DXF drawings to English (glossary-driven, layout-aware):
 removes the GOST frame, translates names, BOM, technical requirements and callouts,
-writes `EN/dxf/*_EN.dxf` + `EN/pdf/*.pdf`, checks text/line overlaps and builds a review page.
+writes `EN/dxf/*_EN.dxf` + `EN/pdf/*.pdf` (and, given the order's translation file, the English
+production list `EN/<file>_EN.xlsx`), checks text/line overlaps and builds a review page.
 
 ## Швидкий старт (українською)
 
+**Що підготувати.** Креслення SolidWorks у DXF і (бажано) один **файл перекладу** — виробничий
+список `.xlsx`, де поруч із колонками `Назва` і `Матеріал` є колонки `Name` і `Material` з
+англійським текстом (на першому аркуші — рядок із заголовками `Позначення`, `Назва`, `Name`,
+`Матеріал`, `Material`; порядок довільний, інші колонки дозволені):
+
+| Поз. | Позначення | Назва | Name | Кільк. | Матеріал | Material |
+|---|---|---|---|---|---|---|
+| 1 | AS18v1.110.016 | Втулка різьбова | Threaded bushing | 408 | Круг 12 алюм. | Round bar 12 Aluminum EN AW-6063 T5 |
+
+Звідти беруться назви деталей і матеріали; без файлу перекладу — лише глосарій. Програма файл
+перекладу не змінює: порожні або ще українські клітинки `Name` / `Material` показуються як
+відсутні переклади — впишіть їх у файл. Старі два окремі списки (UA + EN) не підтримуються.
+
 **Варіант 1 — програма для Windows.** Завантажте `.exe` з
-[GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases), перетягніть папку
-з DXF-кресленнями у вікно. Результат — у папці `EN` поруч із кресленнями.
+[GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases). У полі «Файл перекладу»
+оберіть `.xlsx` («Обрати файл перекладу…» або перетягніть його у вікно; «×» прибирає), потім
+перетягніть папку з DXF-кресленнями у вікно (файли Excel у папці не читаються). Результат — у
+папці `EN` поруч із кресленнями, разом з англійським виробничим списком `EN/<файл>_EN.xlsx`
+(кнопка «Відкрити список»). Файл перекладу запам'ятовується, доки вікно відкрите.
 Під час першого запуску Windows SmartScreen може попередити про невідомого видавця —
 натисніть «Докладніше» → «Усе одно запустити» (More info → Run anyway).
 Програма — один файл, який при кожному запуску спершу розпаковується, тому перший старт
@@ -27,7 +44,9 @@ writes `EN/dxf/*_EN.dxf` + `EN/pdf/*.pdf`, checks text/line overlaps and builds 
        /plugin marketplace add virtuoz-star/dxf-translate
        /plugin install dxf-translate@dxf-translate
 
-3. Напишіть, наприклад: «Переклади креслення в папці C:\Замовлення\AS029». Claude запустить
+3. Напишіть, наприклад: «Переклади креслення в папці C:\Замовлення\AS029, файл перекладу
+   AS29V2 2026.11.11.xlsx» (без назви файлу Claude візьме єдиний підхожий `.xlsx` у папці або
+   запитає). Claude запустить
    перекладач і запропонує переклад для невідомих термінів; після вашого підтвердження (або
    виправлень) запише їх у `glossary.yaml` замовлення. Базовий глосарій змінюється лише на ваше
    окреме прохання. Потім Claude перевірить накладання тексту і дасть посилання на сторінку перегляду `EN/review/index.html`.
@@ -77,8 +96,13 @@ To try a local checkout without installing: `claude --plugin-dir /path/to/dxf-tr
 Windows: download `dxf-translate-<version>.exe` from
 [GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases) — a single file, no
 install. The exe is not code-signed, so on first launch Windows SmartScreen shows
-"Windows protected your PC": click **More info → Run anyway**. Drop a folder with DXF drawings
-onto the window; results go to `EN` next to them.
+"Windows protected your PC": click **More info → Run anyway**. Pick the order's translation
+file in the "Файл перекладу" input ("Обрати файл перекладу…", or drop the `.xlsx` onto the
+window; "×" clears it — a dropped `.xlsx` always goes there, everything else is the DXF input),
+then drop a folder with DXF drawings onto the window; results go to `EN` next to them,
+including the English production list `EN/<file>_EN.xlsx` ("Відкрити список"). The translation
+file is kept until the window closes, so "Save and re-run" reuses it. Missing Name/Material
+cells of the translation file are listed read-only with the hint to fill them in the file.
 The exe is a PyInstaller one-file build that unpacks itself on every start, so the first
 start (especially right after download / an antivirus scan) can take 10–30 s.
 "Save and re-run" writes the entered translations to `glossary.yaml` in the order root (the
@@ -106,6 +130,10 @@ Build the exe: `uv run pyinstaller packaging/dxf-translate.spec` → `dist/dxf-t
   reported as `!! TRANSLATION FILE: fill Name for AS…: …` (exit 2). Without it → warning, glossary
   only. The old UA + EN pair is not supported; convert it once with
   `uv run python scripts/convert_pair.py UA.xlsx EN.xlsx OUT.xlsx`.
+  With it the run also writes the English production list `<out>/<file stem>_EN.xlsx` (same rows
+  without `Назва`/`Матеріал`, other Cyrillic cells via the glossary, styles and merges kept) and
+  prints `EN production list: …`; a write failure (file open in Excel) is a warning, drawings
+  are still produced.
 * Glossary: bundled base `src/dxf_translate/data/glossary.yaml`, overridden by `glossary.yaml`
   in the order folder (sections `phrases`, `full_material`, `bom_material`, `notes`, `substr`,
   `assembly_suffix`, `part_no_pattern` — regex a Part No. must match, base `"^AS"`).

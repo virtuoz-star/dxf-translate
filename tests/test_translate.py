@@ -101,3 +101,15 @@ def test_missing_note_with_double_dot_is_satisfiable(tmp_path):
     res2 = translate_file(src, tmp_path / "out", g)
     assert not [m for m in res2.missing if m.kind == "note"]
     assert "Unknown requirement." in " ".join(texts(ezdxf.readfile(res2.dxf)))
+
+
+def test_manual_sheet_unknown_part_reported(tmp_path):
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    msp.dxf.limmin, msp.dxf.limmax = (0, 0), (420, 297)
+    msp.add_mtext("1. Sharp edges blunt.^JPart No.: AS9.999^JName: Beam",
+                  dxfattribs={"insert": (300, 50), "char_height": 3.5})
+    doc.saveas(tmp_path / "m.dxf")
+    res = translate_file(tmp_path / "m.dxf", tmp_path / "out", load_base())
+    assert Missing("AS9.999", "part") in res.missing
+    assert "(Part No. AS9.999 not in translation file)" in " ".join(res.report)

@@ -15,14 +15,16 @@ class JobWorker(QObject):
     finished = Signal(object)          # JobResult
     error = Signal(str)                # user-facing message, never a traceback
 
-    def __init__(self, paths: list[Path]) -> None:
+    def __init__(self, paths: list[Path], translations: Path | None = None) -> None:
         super().__init__()
         self.paths = list(paths)
+        self.translations = translations
 
     @Slot()
     def run(self) -> None:
         try:
-            res = run_job(self.paths, progress=lambda d, t, n: self.progress.emit(d, t, n))
+            res = run_job(self.paths, progress=lambda d, t, n: self.progress.emit(d, t, n),
+                          translations=self.translations)
         except GlossaryError as exc:
             self.error.emit(str(exc))
         except NoInputsError:

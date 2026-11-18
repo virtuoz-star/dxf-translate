@@ -4,13 +4,26 @@ APP_NAME = "DXF Translate"
 WINDOW_TITLE = "DXF Translate — переклад креслень UA → EN"
 VERSION = "v{version}"
 
-DROP_HINT = "Перетягніть сюди файли DXF / Excel або папку замовлення"
+DROP_HINT = "Перетягніть сюди папку замовлення або файли DXF"
 DROP_BUSY = "Виконується переклад…"
 CHOOSE_FILES = "Обрати файли…"
 CHOOSE_FOLDER = "Обрати папку…"
-CHOOSE_FILES_TITLE = "Оберіть файли DXF та Excel"
+CHOOSE_FILES_TITLE = "Оберіть файли DXF"
 CHOOSE_FOLDER_TITLE = "Оберіть папку замовлення"
-FILE_FILTER = "Креслення та Excel (*.dxf *.DXF *.xlsx *.XLSX);;Усі файли (*)"
+FILE_FILTER = "Креслення DXF (*.dxf *.DXF);;Усі файли (*)"
+
+TRANSLATIONS_TITLE = "Файл перекладу"
+NO_TRANSLATIONS = ("Не вибрано — перетягніть сюди файл .xlsx з колонками "
+                   "Позначення, Назва, Name, Матеріал, Material")
+CHOOSE_TRANSLATIONS = "Обрати файл перекладу…"
+CHOOSE_TRANSLATIONS_TITLE = "Оберіть файл перекладу"
+TRANSLATIONS_FILTER = "Файл перекладу (*.xlsx *.XLSX);;Усі файли (*)"
+CLEAR_TRANSLATIONS = "×"
+CLEAR_TRANSLATIONS_TIP = "Прибрати файл перекладу"
+SEVERAL_TRANSLATIONS = "Перетягніть лише один файл перекладу (.xlsx)."
+LOG_TRANSLATIONS = "Файл перекладу: {path}"
+EN_LIST = "Англійський виробничий список: {name}"
+OPEN_EN_LIST = "Відкрити список"
 
 LOG_START = "Початок: {paths}"
 LOG_PROGRESS = "Оброблено {done}/{total}: {name}"
@@ -19,16 +32,17 @@ LOG_ERROR = "Помилка: {msg}"
 LOG_SAVED = "Збережено перекладів: {n} → {path}"
 
 COUNTS = "Перекладено: {ok}   ·   Помилки: {failed}   ·   Накладання: {overlaps}"
-NO_EXCEL = ("Увага: файли Excel (виробничі списки UA та EN) не знайдено — "
-            "назви та матеріали перекладаються лише за глосарієм.")
+NO_EXCEL = "Файл перекладу не вибрано — назви та матеріали перекладаються лише за глосарієм"
 FAILURES = "Помилки"
 OVERLAPS = "Накладання тексту на лінії"
 OVERLAP_ITEM = "{file}: «{text}» ({x:.0f}, {y:.0f} мм) — перетинає ліній: {lines}"
 OVERLAP_HINT = "Виправте в Claude Code або вручну"
 MISSING = "Відсутні переклади"
 MISSING_HEADERS = ["Український текст", "Тип", "Файли", "English"]
-KINDS = {"phrase": "фраза", "note": "примітка", "part": "деталь (Excel)"}
-PART_FIX_EXCEL = "Виправте у файлі Excel"
+KINDS = {"phrase": "фраза", "note": "примітка", "part": "деталь (файл перекладу)",
+         "excel": "файл перекладу"}
+PART_FIX_EXCEL = "Додайте цю деталь у файл перекладу"
+EXCEL_HINT = "Впишіть у файл перекладу, колонка {col} ({pn})"
 
 SAVE_RERUN = "Зберегти та перезапустити"
 OPEN_DIR = "Відкрити папку з результатами"
@@ -42,9 +56,13 @@ NOTHING_TO_SAVE = "Введіть переклад англійською хоч
 # per-file failures / errors: technical text stays in the log, the user sees this
 FILE_IN_USE = ("Файл відкритий в іншій програмі (наприклад, PDF в Acrobat) — "
                "закрийте його та перезапустіть")
-EXCEL_AMBIGUOUS = ("Знайдено кілька файлів Excel: потрібен рівно один український та один "
-                   "англійський виробничий список. Залиште лише їх і перезапустіть")
-EXCEL_UNREADABLE = "Не вдалося прочитати файл Excel — перевірте, що він не пошкоджений і не відкритий"
+TRANSLATIONS_UNREADABLE = ("Не вдалося прочитати файл перекладу — перевірте, що це файл .xlsx, "
+                           "він не пошкоджений і не відкритий в іншій програмі")
+NOT_TRANSLATION_FILE = ("Це не файл перекладу: на першому аркуші потрібен рядок із заголовками "
+                        "Позначення, Назва, Name, Матеріал, Material")
+EN_LIST_FAILED = "Не вдалося записати англійський список (файл відкритий у Excel?)"
+EN_LIST_FORMULA = ("Формула в англійському списку посилається на прибрану українську колонку "
+                   "(Назва або Матеріал) — цю клітинку залишено порожньою, заповніть її вручну")
 NAME_COLLISION = ("Кілька креслень з однаковою назвою в різних папках — результати перезаписали б "
                   "одне одного. Перейменуйте одне з них або перекладіть папки окремо")
 UNSUPPORTED_SHEET = "Непідтримуваний формат аркуша (підтримуються лише A3 та A4)"
@@ -55,10 +73,12 @@ GLOSSARY_BAD = "Помилка у файлі glossary.yaml"
 DETAILS = "Подробиці: {msg}"
 
 _EXPLAIN = (
+    (("en_list_failed:",), EN_LIST_FAILED),              # before FILE_IN_USE: same exceptions
+    (("en_list_formula:",), EN_LIST_FORMULA),
+    (("cannot read translation file",), TRANSLATIONS_UNREADABLE),
+    (("not a translation file",), NOT_TRANSLATION_FILE),
     (("PermissionError", "Permission denied", "WinError 32", "being used by another process"),
      FILE_IN_USE),
-    (("ambiguous Excel",), EXCEL_AMBIGUOUS),
-    (("cannot read Excel",), EXCEL_UNREADABLE),
     (("output name collision",), NAME_COLLISION),
     (("Unsupported sheet size", "UnsupportedSheet"), UNSUPPORTED_SHEET),
     (("DXFStructureError", "DXFError", "Not a DXF file"), BROKEN_DXF),

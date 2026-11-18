@@ -148,3 +148,10 @@ def test_job_reports_formula_problem(tmp_path):
     r = run_job([tmp_path], review=False, translations=p)
     assert "en_list_formula: formula in F4 (=G3) refers to dropped column Матеріал" in r.warnings
     assert r.en_list.is_file() and r.exit_code == 2
+
+
+def test_formula_same_sheet_name_case_insensitive(tmp_path):
+    # the sheet is "Sheet"; Excel sheet names are case-insensitive
+    ws, _, problems = export_formulas(tmp_path, {"F4": "=sheet!F3+'SHEET'!I3"})
+    assert problems == []
+    assert ws["E4"].value == "=sheet!E3+'SHEET'!G3"
