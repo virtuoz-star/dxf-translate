@@ -12,15 +12,17 @@ writes `EN/dxf/*_EN.dxf` + `EN/pdf/*.pdf`, checks text/line overlaps and builds 
 
 **Варіант 2 — Claude Code.**
 
-1. Встановіть [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
+1. Встановіть [Claude Code](https://code.claude.com/docs) та
+   [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
 2. У Claude Code виконайте:
 
        /plugin marketplace add virtuoz-star/dxf-translate
        /plugin install dxf-translate@dxf-translate
 
 3. Напишіть, наприклад: «Переклади креслення в папці C:\Замовлення\AS029». Claude запустить
-   перекладач, запропонує переклад для невідомих термінів (запише їх у `glossary.yaml` замовлення),
-   перевірить накладання тексту і дасть посилання на сторінку перегляду `EN/review/index.html`.
+   перекладач і запропонує переклад для невідомих термінів; після вашого підтвердження (або
+   виправлень) запише їх у `glossary.yaml` замовлення. Базовий глосарій змінюється лише на ваше
+   окреме прохання. Потім Claude перевірить накладання тексту і дасть посилання на сторінку перегляду `EN/review/index.html`.
 
 ## Claude Code plugin
 
@@ -29,18 +31,17 @@ plugin itself (`.claude-plugin/plugin.json`, source `"./"`). The plugin root has
 root: an installed plugin is copied into the plugin cache without anything outside its source
 directory, and the skill runs the Python package that lives next to it.
 
-Prerequisite: [`uv`](https://docs.astral.sh/uv/) on `PATH`.
+Prerequisites: [Claude Code](https://code.claude.com/docs) installed, and
+[`uv`](https://docs.astral.sh/uv/) on `PATH`.
 
     /plugin marketplace add virtuoz-star/dxf-translate
     /plugin install dxf-translate@dxf-translate
 
-(Claude Code 2.1.275+ also accepts the one-step form
-`/plugin install dxf-translate --marketplace virtuoz-star/dxf-translate`.)
-
 The skill `dxf-translate:translate-drawings` runs
 `uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate <folder>`; the first run creates a
-virtual environment inside the installed plugin copy. It then fills missing terms in the order
-glossary, inspects overlap crops at full resolution and reruns until `TOTAL new overlaps: 0`.
+virtual environment inside the installed plugin copy. For missing terms it proposes English
+translations, waits for the user's OK or corrections, then writes them to the order glossary
+(the base glossary only on explicit request, via branch + PR). It inspects overlap crops at full resolution and reruns until `TOTAL new overlaps: 0`.
 
 To try a local checkout without installing: `claude --plugin-dir /path/to/dxf-translate`.
 
