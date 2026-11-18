@@ -33,6 +33,7 @@ class JobResult:
     warnings: list[str] = field(default_factory=list)
     excel: tuple[Path, Path] | None = None
     excel_pairs: int = 0
+    order_dir: Path | None = None            # where the order glossary.yaml lives
 
     @property
     def exit_code(self) -> int:
@@ -87,7 +88,7 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
     order_dir = default_out(paths, dxfs).parent
     g = glossary_mod.load(order_dir)
     out = Path(out_dir) if out_dir else order_dir / "EN"
-    res = JobResult(out_dir=out, excel=pair)
+    res = JobResult(out_dir=out, excel=pair, order_dir=order_dir)
     if pair is None:
         res.warnings.append("no_excel")
     else:

@@ -54,6 +54,7 @@ def test_order_glossary_used(tmp_path):
         'phrases:\n  "Невідома деталь": "Mystery part"\n', encoding="utf-8")
     r = run_job([tmp_path])
     assert not r.missing
+    assert r.order_dir == tmp_path
     import ezdxf
     texts = " ".join(e.plain_text() for e in ezdxf.readfile(r.sheets[0].dxf).modelspace()
                      if e.dxftype() == "MTEXT")

@@ -1,0 +1,157 @@
+"""Desktop window tests (offscreen Qt). Skipped when the `gui` extra is not installed."""
+import os
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+pytest.importorskip("pytestqt")
+
+import yaml  # noqa: E402
+from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl  # noqa: E402
+from PySide6.QtGui import QDropEvent  # noqa: E402
+from PySide6.QtWidgets import QMessageBox  # noqa: E402
+
+from dxf_translate import __version__  # noqa: E402
+from dxf_translate.gui import texts  # noqa: E402
+from dxf_translate.gui.window import MainWindow  # noqa: E402
+from fixtures import make_sheet  # noqa: E402
+
+T = 60000
+
+
+@pytest.fixture
+def window(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    yield w
+    w.wait_idle()
+
+
+def _run(qtbot, window, paths):
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.start(paths)
+
+
+def test_version_shown(window):
+    assert f"v{__version__}" in window.version_label.text()
+
+
+def test_drop_runs_job(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    assert not window.open_dir_btn.isEnabled()
+    _run(qtbot, window, [tmp_path])
+    assert texts.COUNTS.format(ok=1, failed=0, overlaps=0) == window.counts_label.text()
+    assert window.open_dir_btn.isEnabled() and window.open_review_btn.isEnabled()
+    assert window.excel_warning.isVisibleTo(window)          # no Excel in the folder
+    assert window.missing_table.rowCount() == 0
+
+
+def test_controls_disabled_while_running(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.start([tmp_path])
+        assert not window.choose_btn.isEnabled()
+        assert not window.save_btn.isEnabled()
+        assert not window.acceptDrops()
+    assert window.choose_btn.isEnabled() and window.acceptDrops()
+
+
+def test_drop_event_with_file_urls(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(tmp_path))])
+    ev = QDropEvent(QPointF(10, 10), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.dropEvent(ev)
+    assert window.last_paths == [tmp_path]
+    assert window.counts_label.text() == texts.COUNTS.format(ok=1, failed=0, overlaps=0)
+
+
+def test_missing_saved_and_rerun(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf", name="Невідома деталь")
+    _run(qtbot, window, [tmp_path])
+    t = window.missing_table
+    assert t.rowCount() == 1 and t.item(0, 0).text() == "Невідома деталь"
+    t.item(0, 3).setText("Mystery part")
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.save_btn.click()
+    data = yaml.safe_load((tmp_path / "glossary.yaml").read_text(encoding="utf-8"))
+    assert data["phrases"]["Невідома деталь"] == "Mystery part"
+    assert window.missing_table.rowCount() == 0
+    assert window.result.missing == []
+
+
+def test_save_skips_empty_cells(qtbot, window, tmp_path, monkeypatch):
+    make_sheet(tmp_path / "a.dxf", name="Невідома деталь")
+    _run(qtbot, window, [tmp_path])
+    infos = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: infos.append(a))
+    window.save_btn.click()
+    assert not (tmp_path / "glossary.yaml").exists() and infos
+
+
+def test_part_rows_read_only(qtbot, window, tmp_path):
+    from dxf_translate.pipeline import JobResult, MissingText
+    res = JobResult(out_dir=tmp_path / "EN", order_dir=tmp_path,
+                    missing=[MissingText("AS1.001", "part", ["a.dxf"])])
+    window.show_result(res)
+    item = window.missing_table.item(0, 3)
+    assert not item.flags() & Qt.ItemIsEditable
+    assert item.text() == texts.PART_FIX_EXCEL
+    assert window.missing_table.item(0, 1).text() == texts.KINDS["part"]
+
+
+def test_overlaps_hint(qtbot, window, tmp_path):
+    from dxf_translate.overlaps import Overlap
+    from dxf_translate.pipeline import JobResult
+    res = JobResult(out_dir=tmp_path / "EN", order_dir=tmp_path,
+                    overlaps=[Overlap("a_EN.dxf", "Part No.", 10.0, 20.0, 2)],
+                    failed=[("b.dxf", "boom")])
+    window.show_result(res)
+    assert window.overlap_hint.isVisibleTo(window)
+    assert window.overlaps_list.count() == 1 and window.failures_list.count() == 1
+    assert window.counts_label.text() == texts.COUNTS.format(ok=0, failed=1, overlaps=1)
+
+
+def test_ambiguous_excel_shows_error(qtbot, window, tmp_path, monkeypatch):
+    import openpyxl
+    make_sheet(tmp_path / "a.dxf")
+    for name, text in (("one.xlsx", "Балка"), ("two.xlsx", "Деталь")):
+        wb = openpyxl.Workbook(); wb.active["A1"] = text; wb.save(tmp_path / name)
+    calls = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: calls.append(a))
+    _run(qtbot, window, [tmp_path])
+    assert calls and "ambiguous" in calls[0][2]
+    assert "Traceback" not in calls[0][2]
+    assert window.choose_btn.isEnabled()
+
+
+def test_no_dxf_shows_ukrainian_error(qtbot, window, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: calls.append(a))
+    _run(qtbot, window, [tmp_path])
+    assert calls and calls[0][2] == texts.NO_DXF
+
+
+def test_worker_unexpected_error(qtbot, monkeypatch, tmp_path):
+    from dxf_translate.gui import worker as worker_mod
+
+    def boom(*a, **k):
+        raise RuntimeError("kaput")
+    monkeypatch.setattr(worker_mod, "run_job", boom)
+    w = worker_mod.JobWorker([tmp_path])
+    with qtbot.waitSignal(w.error, timeout=T) as sig:
+        w.run()
+    assert sig.args == ["RuntimeError: kaput"]
+
+
+def test_open_buttons(qtbot, window, tmp_path, monkeypatch):
+    from dxf_translate.gui import window as window_mod
+    make_sheet(tmp_path / "a.dxf")
+    _run(qtbot, window, [tmp_path])
+    opened = []
+    monkeypatch.setattr(window_mod.QDesktopServices, "openUrl", lambda u: opened.append(u.toLocalFile()))
+    window.open_dir_btn.click()
+    window.open_review_btn.click()
+    assert opened == [str(window.result.out_dir), str(window.result.review)]

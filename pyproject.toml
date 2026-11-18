@@ -16,10 +16,15 @@ dependencies = [
 gui = ["PySide6"]
 
 [dependency-groups]
-dev = ["pytest", "pyinstaller"]
+dev = [
+    "pytest",
+    "pyinstaller",
+    "pytest-qt>=4.5.0",
+]
 
 [project.scripts]
 dxf-translate = "dxf_translate.cli:main"
+dxf-translate-gui = "dxf_translate.gui.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -32,3 +37,4 @@ include = ["src/dxf_translate/fonts/*", "src/dxf_translate/data/*.yaml"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["scripts"]
+addopts = "-p no:pytest-qt"
