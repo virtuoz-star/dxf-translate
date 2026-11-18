@@ -19,6 +19,13 @@ production list `EN/<file>_EN.xlsx`), checks text/line overlaps and builds a rev
 Звідти беруться назви деталей і матеріали; без файлу перекладу — лише глосарій. Програма файл
 перекладу не змінює: порожні або ще українські клітинки `Name` / `Material` показуються як
 відсутні переклади — впишіть їх у файл. Старі два окремі списки (UA + EN) не підтримуються.
+Шаблон: [`templates/translation-template.xlsx`](https://github.com/virtuoz-star/dxf-translate/raw/master/templates/translation-template.xlsx) (жовті колонки — українські, сині —
+заповніть англійською).
+
+**Англійська версія для замовника.** Кнопка «Англійська версія для замовника» у полі «Файл
+перекладу» (без креслень) створює поруч із файлом `<назва>_EN.xlsx` лише англійською: колонки
+`Назва` і `Матеріал` прибрано, заголовки й розділи перекладено. Якщо щось лишилося українським
+або порожнім, програма покаже список. З командного рядка: `dxf-translate --export-en ФАЙЛ.xlsx`.
 
 **Варіант 1 — програма для Windows.** Завантажте `.exe` з
 [GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases); поки першого релізу
@@ -108,6 +115,9 @@ then drop a folder with DXF drawings onto the window; results go to `EN` next to
 including the English production list `EN/<file>_EN.xlsx` ("Відкрити список"). The translation
 file is kept until the window closes, so "Save and re-run" reuses it. Missing Name/Material
 cells of the translation file are listed read-only with the hint to fill them in the file.
+"Англійська версія для замовника" (in the translation-file input, no drawings needed) writes the
+English-only copy `<file>_EN.xlsx` next to the translation file and lists anything still
+Ukrainian or empty.
 The exe is a PyInstaller one-file build that unpacks itself on every start, so the first
 start (especially right after download / an antivirus scan) can take 10–30 s.
 "Save and re-run" writes the entered translations to `glossary.yaml` in the order root (the
@@ -140,6 +150,11 @@ Build the exe: `uv run pyinstaller packaging/dxf-translate.spec` → `dist/dxf-t
   without `Назва`/`Матеріал`, other Cyrillic cells via the glossary, styles and merges kept) and
   prints `EN production list: …`; a write failure (file open in Excel) is a warning, drawings
   are still produced.
+* `--export-en FILE.xlsx [--out DIR]` — only the English-only copy of a translation file for the
+  customer (`<DIR or the file's folder>/<stem>_EN.xlsx`, glossary = base + `glossary.yaml` next to
+  the file), no drawings; exit 2 if Ukrainian/empty cells are left (listed as `!! …`).
+* Template for a new order: `templates/translation-template.xlsx` (regenerate with
+  `uv run python scripts/make_template.py`).
 * Glossary: bundled base `src/dxf_translate/data/glossary.yaml`, overridden by `glossary.yaml`
   in the order folder (sections `phrases`, `full_material`, `bom_material`, `notes`, `substr`,
   `assembly_suffix`, `part_no_pattern` — regex a Part No. must match, base `"^AS"`).

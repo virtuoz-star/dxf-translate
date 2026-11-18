@@ -404,3 +404,64 @@ def test_same_translation_file_keeps_result(qtbot, window, tmp_path):
     _run(qtbot, window, [tmp_path])
     window.set_translations(t)
     assert window.result is not None and window.en_list_label.isVisibleTo(window)
+
+
+def _boxes(monkeypatch):
+    shown = []
+    for kind in ("information", "warning", "critical"):
+        monkeypatch.setattr(QMessageBox, kind, lambda *a, k=kind: shown.append((k, a[2])))
+    return shown
+
+
+def test_export_en_button(qtbot, window, tmp_path, monkeypatch):
+    from dxf_translate.gui import window as window_mod
+    shown = _boxes(monkeypatch)
+    opened = []
+    monkeypatch.setattr(window_mod.QDesktopServices, "openUrl", lambda u: opened.append(u.toLocalFile()))
+    assert not window.export_en_btn.isEnabled()
+    assert window.export_en_btn.text() == "Англійська версія для замовника"
+    window.set_translations(_translations(tmp_path / "List.xlsx", [["AS1.001", "Балка", "Beam",
+                                                                    "Лист 3 алюм.", "Sheet 3 Al"]]))
+    assert window.export_en_btn.isEnabled()
+    window.export_en_btn.click()
+    out = tmp_path / "List_EN.xlsx"
+    assert out.is_file()
+    assert shown == [("information", texts.EXPORT_EN_DONE.format(path=out))]
+    assert [Path(u) for u in opened] == [tmp_path]
+    import openpyxl
+    head = [c.value for c in openpyxl.load_workbook(out).worksheets[0][1]]
+    assert head == ["Part No.", "Name", "Material"]
+
+
+def test_export_en_reports_left_ukrainian(qtbot, window, tmp_path, monkeypatch):
+    from dxf_translate.gui import window as window_mod
+    shown = _boxes(monkeypatch)
+    monkeypatch.setattr(window_mod.QDesktopServices, "openUrl", lambda u: None)
+    window.set_translations(_translations(tmp_path / "List.xlsx", [["AS1.001", "Балка", None,
+                                                                    "Лист 3 алюм.", "Sheet 3 Al"]]))
+    window.export_en_btn.click()
+    assert [k for k, _ in shown] == ["warning"]
+    assert "AS1.001: впишіть Name для «Балка»" in shown[0][1]
+
+
+def test_export_en_bad_file(qtbot, window, tmp_path, monkeypatch):
+    shown = _boxes(monkeypatch)
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.active.append(["Позначення", "Назва"])
+    wb.save(tmp_path / "old.xlsx")
+    window.set_translations(tmp_path / "old.xlsx")
+    window.export_en_btn.click()
+    assert [k for k, _ in shown] == ["critical"]
+    assert texts.NOT_TRANSLATION_FILE in shown[0][1]
+    assert not (tmp_path / "old_EN.xlsx").exists()
+
+
+def test_export_en_locked(qtbot, window, tmp_path, monkeypatch):
+    import openpyxl
+    shown = _boxes(monkeypatch)
+    window.set_translations(_translations(tmp_path / "List.xlsx", []))
+    monkeypatch.setattr(openpyxl.Workbook, "save", lambda *a: (_ for _ in ()).throw(
+        PermissionError(13, "Permission denied")))
+    window.export_en_btn.click()
+    assert [k for k, _ in shown] == ["critical"] and texts.EN_LIST_FAILED in shown[0][1]

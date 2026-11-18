@@ -16,7 +16,7 @@ from dxf_translate import __version__
 from dxf_translate.glossary import GlossaryError, save_terms
 from dxf_translate.gui import texts
 from dxf_translate.gui.worker import JobWorker
-from dxf_translate.pipeline import JobResult
+from dxf_translate.pipeline import JobResult, export_english
 
 SECTIONS = {"phrase": "phrases", "note": "notes"}     # `part`/`excel` rows: fix the translation file
 
@@ -81,8 +81,12 @@ class MainWindow(QMainWindow):
         self.clear_translations_btn.setToolTip(texts.CLEAR_TRANSLATIONS_TIP)
         self.clear_translations_btn.setFixedWidth(32)
         self.clear_translations_btn.clicked.connect(lambda: self.set_translations(None))
+        self.export_en_btn = QPushButton(texts.EXPORT_EN)
+        self.export_en_btn.setToolTip(texts.EXPORT_EN_TIP)
+        self.export_en_btn.clicked.connect(self.export_english)
         tl.addWidget(self.translations_label, 1)
         tl.addWidget(self.choose_translations_btn)
+        tl.addWidget(self.export_en_btn)
         tl.addWidget(self.clear_translations_btn)
         lay.addWidget(self.translations_box)
 
@@ -400,6 +404,7 @@ class MainWindow(QMainWindow):
         self.folder_btn.setEnabled(idle)
         self.choose_translations_btn.setEnabled(idle)
         self.clear_translations_btn.setEnabled(idle and self.translations is not None)
+        self.export_en_btn.setEnabled(idle and self.translations is not None)
         res = self.result
         self.open_en_list_btn.setEnabled(idle and bool(res and res.en_list and res.en_list.is_file()))
         editable = bool(res and any(m.kind in SECTIONS for m in res.missing))
@@ -438,6 +443,36 @@ class MainWindow(QMainWindow):
         n = sum(len(v) for v in terms.values())
         self.log.appendPlainText(texts.LOG_SAVED.format(n=n, path=path))
         self.start(self.last_paths)
+
+    def export_english(self) -> None:
+        """English-only copy of the translation file next to it, for the customer."""
+        if self.busy or self.translations is None:
+            return
+        order_dir = self.result.order_dir if self.result else None
+        try:
+            res = export_english(self.translations, order_dir=order_dir)
+        except Exception as exc:          # noqa: BLE001 - shown as a message, never a traceback
+            msg = f"{type(exc).__name__}: {exc}" if not isinstance(exc, GlossaryError) else str(exc)
+            self.log.appendPlainText(texts.LOG_ERROR.format(msg=msg))
+            hint = texts.explain(msg)
+            if isinstance(exc, OSError):
+                hint = texts.EN_LIST_FAILED
+            QMessageBox.critical(self, texts.ERROR_TITLE,
+                                 f"{hint}\n\n{texts.DETAILS.format(msg=msg)}" if hint else msg)
+            return
+        self.log.appendPlainText(texts.LOG_EXPORT_EN.format(path=res.path))
+        if res.clean:
+            QMessageBox.information(self, texts.INFO_TITLE, texts.EXPORT_EN_DONE.format(path=res.path))
+        else:
+            items = ([texts.EXPORT_EN_MISSING.format(ua=ua, col=col, pn=pn) for ua, col, pn in res.missing]
+                     + [texts.EXPORT_EN_UNTRANSLATED.format(text=t) for t in res.untranslated]
+                     + [f"• {texts.EN_LIST_FORMULA}"] * bool(res.problems))
+            for line in items:
+                self.log.appendPlainText(line)
+            shown = items[:12] + ([texts.EXPORT_EN_MORE.format(n=len(items) - 12)] if len(items) > 12 else [])
+            QMessageBox.warning(self, texts.INFO_TITLE,
+                                texts.EXPORT_EN_LEFT.format(path=res.path, items="\n".join(shown)))
+        self._open(res.path.parent)
 
     def _open(self, path: Path) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))

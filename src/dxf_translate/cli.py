@@ -1,4 +1,5 @@
 """Command line: dxf-translate PATH... [--translations FILE] [--out DIR] [--no-review] [--overlaps-only]
+or dxf-translate --export-en FILE [--out DIR] (English-only copy of the translation file)
 or dxf-translate --crop PDF X Y (render the area around a reported point of a sheet)."""
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ import sys
 from pathlib import Path
 
 from dxf_translate.glossary import GlossaryError
-from dxf_translate.pipeline import JobResult, check_overlaps_only, run_job
+from dxf_translate.pipeline import JobResult, check_overlaps_only, export_english, run_job
 
 _WARN = {"no_excel": "!! no translation file given (--translations): glossary comes from files only"}
 
@@ -48,6 +49,18 @@ def _overlaps_only(paths: list[Path], out: Path | None) -> JobResult:
     return res
 
 
+def _export_en(src: Path, out: Path | None) -> int:
+    res = export_english(src, out)
+    print(f"EN production list: {res.path}")
+    for ua, col, pn in res.missing:
+        print(f"!! TRANSLATION FILE: fill {col} for {pn}: {ua}")
+    for text in res.untranslated:
+        print(f"!! NO TRANSLATION: {text}")
+    for p in res.problems:
+        print(f"!! {p}")
+    return 0 if res.clean else 2
+
+
 def _crop(pdf: Path, x: float, y: float) -> int:
     from dxf_translate.review import crop_point, review_crops_at
 
@@ -69,6 +82,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", type=Path, help="output folder (default: <input folder>/EN)")
     ap.add_argument("--no-review", action="store_true", help="skip the HTML review page")
     ap.add_argument("--overlaps-only", action="store_true", help="only check existing output")
+    ap.add_argument("--export-en", type=Path, metavar="FILE",
+                    help="only write the English-only copy of a translation file for the customer "
+                         "(<FILE folder or --out>/<stem>_EN.xlsx), no drawings")
     ap.add_argument("--crop", nargs=3, metavar=("PDF", "X", "Y"),
                     help="render the area around (X, Y) sheet mm of an EN PDF to a PNG and "
                          "list the review crops that contain that point")
@@ -84,6 +100,16 @@ def main(argv: list[str] | None = None) -> None:
             code = _crop(Path(a.crop[0]), x, y)
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
+            code = 1
+        sys.exit(code)
+    if a.export_en:
+        try:
+            code = _export_en(a.export_en, a.out)
+        except GlossaryError as e:
+            print(f"error: {e}", file=sys.stderr)
+            code = 1
+        except OSError as e:
+            print(f"error: cannot write the English list (open in Excel?): {e}", file=sys.stderr)
             code = 1
         sys.exit(code)
     if not a.paths:

@@ -9,3 +9,4 @@ dist/
 build/
 *.spec.bak
 .superpowers/
+!templates/*.xlsx

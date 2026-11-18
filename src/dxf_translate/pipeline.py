@@ -50,6 +50,32 @@ class JobResult:
         return 2 if attention else 0
 
 
+@dataclass
+class EnglishExport:
+    """`export_english` result: the written file and what is still not English in it."""
+    path: Path
+    missing: list[tuple[str, str, str]]      # empty/Cyrillic Name or Material: (ua, column, part_no)
+    untranslated: list[str]                  # other Cyrillic cells without a glossary translation
+    problems: list[str]                      # formulas that referred to a dropped UA column
+
+    @property
+    def clean(self) -> bool:
+        return not (self.missing or self.untranslated or self.problems)
+
+
+def export_english(translations: Path, out_dir: Path | None = None,
+                   order_dir: Path | None = None) -> EnglishExport:
+    """English-only copy of the translation file for the customer, without any drawings:
+    `<out_dir or file's folder>/<stem>_EN.xlsx`. Glossary = base + `<order_dir or file's
+    folder>/glossary.yaml`. GlossaryError for an unreadable / non-translation file; any write
+    error (file open in Excel) propagates."""
+    translations = Path(translations)
+    g = glossary_mod.load(order_dir if order_dir is not None else translations.parent)
+    tf = read_translations(g, translations)
+    path, untranslated, problems = export_en(tf, g, out_dir if out_dir is not None else translations.parent)
+    return EnglishExport(path, tf.missing, untranslated, problems)
+
+
 def collect_inputs(paths: list[Path]) -> list[Path]:
     """DXF inputs. Folders are scanned recursively, skipping sub-folders named EN
     (relative to the dropped folder), *_EN.dxf and ~$ files. Other files are ignored."""
