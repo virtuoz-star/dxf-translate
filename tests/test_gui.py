@@ -228,3 +228,10 @@ def test_worker_maps_no_inputs_by_type(qtbot, monkeypatch, tmp_path):
     with qtbot.waitSignal(w.error, timeout=T) as sig:
         w.run()
     assert sig.args == [texts.NO_DXF]
+
+
+def test_selftest_flag_exits_zero_without_window(qapp, capsys):
+    from dxf_translate.gui import app
+    assert app.main(["dxf-translate", "--selftest"]) == 0
+    assert "selftest OK" in capsys.readouterr().out
+    assert not [w for w in QApplication.topLevelWidgets() if w.isVisible()]

@@ -7,7 +7,11 @@ Claude Code plugin + marketplace (`.claude-plugin/`, skill in `skills/translate-
 
     uv run pytest
 
-Tests build synthetic sheets with `tests/fixtures.py::make_sheet` in `tmp_path`; never add real drawings as fixtures.
+Tests build synthetic sheets with `dxf_translate._selftest.make_sheet` (re-exported by `tests/fixtures.py`) in `tmp_path`; never add real drawings as fixtures. The same sheet backs `dxf-translate-gui --selftest`.
+
+## Windows build
+
+`uv run pyinstaller packaging/dxf-translate.spec` then `dist/dxf-translate --selftest` (exit 0). CI: `.github/workflows/test.yml` (push/PR, ubuntu + windows), `release.yml` (tag `v*` → exe on the GitHub Release). Fonts are bundled-only (`fonts.setup()` clears ezdxf's system font cache).
 
 ## Regression check (before merging changes to translation, glossary or overlap logic)
 

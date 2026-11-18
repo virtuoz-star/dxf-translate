@@ -9,6 +9,8 @@ writes `EN/dxf/*_EN.dxf` + `EN/pdf/*.pdf`, checks text/line overlaps and builds 
 **Варіант 1 — програма для Windows.** Завантажте `.exe` з
 [GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases), перетягніть папку
 з DXF-кресленнями у вікно. Результат — у папці `EN` поруч із кресленнями.
+Під час першого запуску Windows SmartScreen може попередити про невідомого видавця —
+натисніть «Докладніше» → «Усе одно запустити» (More info → Run anyway).
 
 **Варіант 2 — Claude Code.**
 
@@ -47,7 +49,16 @@ To try a local checkout without installing: `claude --plugin-dir /path/to/dxf-tr
 
 ## Desktop app
 
-Windows build: [GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases).
+Windows: download `dxf-translate-<version>.exe` from
+[GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases) — a single file, no
+install. The exe is not code-signed, so on first launch Windows SmartScreen shows
+"Windows protected your PC": click **More info → Run anyway**. Drop a folder with DXF drawings
+(and optionally the UA/EN Excel lists) onto the window; results go to `EN` next to them.
+
+From source: `uv sync --extra gui && uv run dxf-translate-gui [PATH...]`.
+Build the exe: `uv run pyinstaller packaging/dxf-translate.spec` → `dist/dxf-translate(.exe)`;
+`dist/dxf-translate --selftest` translates a generated sheet without a window and exits 0/1.
+Tags `v*` build and publish the Windows exe via `.github/workflows/release.yml`.
 
 ## CLI
 
