@@ -108,7 +108,7 @@ def build_review(out_dir: Path) -> Path:
                           "texts": [(it["t"], it["c"][0], it["c"][1]) for it in g["items"]]})
         doc.close()
         meta.append({"sheet": p.stem, "W": W, "crops": crops})
-    (review / "meta.json").write_text(json.dumps(meta))
+    (review / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
     e = html.escape
     parts = ["""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -136,5 +136,5 @@ def build_review(out_dir: Path) -> Path:
                          f'<figcaption><b>{c["file"]}</b> <span class="pos">x {x0:.0f}–{x1:.0f}, y {y0:.0f}–{y1:.0f} mm</span><ul>{lis}</ul></figcaption></figure>')
         parts.append("</div>")
     parts.append("</body></html>")
-    (review / "index.html").write_text("".join(parts))
+    (review / "index.html").write_text("".join(parts), encoding="utf-8")
     return review / "index.html"

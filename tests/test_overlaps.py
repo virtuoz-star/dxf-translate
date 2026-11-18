@@ -29,3 +29,23 @@ def test_overlap_found(tmp_path):
 def test_overlap_already_in_source_filtered(tmp_path):
     src, out = build(tmp_path, extra_line=CROSS)
     assert find_overlaps(out, src) == []
+
+
+NOTES_CROSS = ((45.0, 110.0), (47.0, 125.0))   # slanted line through the notes text (source only)
+
+
+def test_overlap_caused_by_translation_survives_filter(tmp_path):
+    (tmp_path / "a").mkdir()
+    _, out = build(tmp_path / "a", extra_line=CROSS)
+    clean_src = make_sheet(tmp_path / "clean.DXF")        # source without the line: spot was free
+    res = find_overlaps(out, clean_src)
+    assert res and any("Ø6" in o.text for o in res)
+
+
+def test_source_hit_elsewhere_does_not_filter(tmp_path):
+    (tmp_path / "a").mkdir()
+    _, out = build(tmp_path / "a", extra_line=CROSS)
+    other = make_sheet(tmp_path / "other.DXF", extra_line=NOTES_CROSS)
+    assert find_overlaps(other, None)                      # the source does overlap, but elsewhere
+    res = find_overlaps(out, other)
+    assert res and any("Ø6" in o.text for o in res)
