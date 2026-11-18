@@ -50,7 +50,7 @@ dxf-translate/
   .claude-plugin/marketplace.json (+ plugin manifest)
   pyproject.toml             # uv project, Python 3.12
   tests/
-  .github/workflows/release.yml
+  .github/workflows/build.yml
 ```
 
 (Exact package layout may be simplified during planning, e.g. a single `src/` package

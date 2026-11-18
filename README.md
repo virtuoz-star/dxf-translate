@@ -88,7 +88,7 @@ YAML comments in it are lost.
 From source: `uv sync --extra gui && uv run dxf-translate-gui [PATH...]`.
 Build the exe: `uv run pyinstaller packaging/dxf-translate.spec` → `dist/dxf-translate(.exe)`;
 `dist/dxf-translate --selftest` translates a generated sheet without a window and exits 0/1.
-Tags `v*` build and publish the Windows exe via `.github/workflows/release.yml`.
+`.github/workflows/build.yml` builds the Windows exe on every push to `master` (download it from the run's Artifacts, kept 30 days) and on demand (Actions → build → Run workflow); tags `v*` also publish it as a GitHub Release.
 
 ## CLI
 
