@@ -1,0 +1,11 @@
+*.dxf
+*.DXF
+*.xlsx
+*.pdf
+EN/
+__pycache__/
+.venv/
+dist/
+build/
+*.spec.bak
+.superpowers/
