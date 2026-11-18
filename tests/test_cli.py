@@ -76,3 +76,17 @@ def test_cli_malformed_order_glossary(tmp_path):
     p = run(tmp_path, "--no-review")
     assert p.returncode == 1
     assert "glossary.yaml" in p.stderr and "Traceback" not in p.stderr
+
+
+def test_cli_empty_name_only_translation_file_line(tmp_path):
+    import openpyxl
+    make_sheet(tmp_path / "a.dxf", part_no="AS1.009", name="Кришка")
+    wb = openpyxl.Workbook()
+    for r in (["Позначення", "Назва", "Name", "Матеріал", "Material"],
+              ["AS1.009", "Кришка", None, "Лист 3 алюм.", "Sheet 3 Al"]):
+        wb.active.append(r)
+    wb.save(tmp_path / "t.xlsx")
+    p = run(tmp_path, "--no-review", "--translations", tmp_path / "t.xlsx")
+    assert p.returncode == 2, p.stdout + p.stderr
+    assert "!! TRANSLATION FILE: fill Name for AS1.009: Кришка" in p.stdout
+    assert "!! NO TRANSLATION" not in p.stdout, p.stdout

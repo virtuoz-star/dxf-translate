@@ -21,7 +21,9 @@ production list `EN/<file>_EN.xlsx`), checks text/line overlaps and builds a rev
 відсутні переклади — впишіть їх у файл. Старі два окремі списки (UA + EN) не підтримуються.
 
 **Варіант 1 — програма для Windows.** Завантажте `.exe` з
-[GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases). У полі «Файл перекладу»
+[GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases); поки першого релізу
+немає — GitHub → [Actions → build](https://github.com/virtuoz-star/dxf-translate/actions/workflows/build.yml) → останній зелений запуск на `master` → Artifacts →
+`dxf-translate-<commit>.exe` (zip з exe; потрібен вхід у GitHub, зберігається 30 днів). У полі «Файл перекладу»
 оберіть `.xlsx` («Обрати файл перекладу…» або перетягніть його у вікно; «×» прибирає), потім
 перетягніть папку з DXF-кресленнями у вікно (файли Excel у папці не читаються). Результат — у
 папці `EN` поруч із кресленнями, разом з англійським виробничим списком `EN/<файл>_EN.xlsx`
@@ -56,14 +58,15 @@ production list `EN/<file>_EN.xlsx`), checks text/line overlaps and builds a rev
 Репозиторій приватний. / The repository is private.
 
 * **UA:** ваш обліковий запис GitHub має бути доданий до репозиторію `virtuoz-star/dxf-translate`
-  (попросіть власника). Програму `.exe` завантажуйте зі сторінки Releases, увійшовши в GitHub.
+  (попросіть власника). Програму `.exe` завантажуйте зі сторінки Releases (до першого релізу —
+  Actions → build → Artifacts), увійшовши в GitHub.
   Для плагіна Claude Code git має мати доступ до приватного репозиторію: виконайте
   `gh auth login` ([GitHub CLI](https://cli.github.com/)) або увійдіть через Git Credential
   Manager (входить до Git for Windows) — перевірка: `git ls-remote https://github.com/virtuoz-star/dxf-translate`.
   Для фонового автооновлення плагіна Claude Code потрібен токен у змінній середовища
   `GITHUB_TOKEN` (або `GH_TOKEN`) з правом читання цього репозиторію.
 * **EN:** your GitHub account must be added to `virtuoz-star/dxf-translate` (ask the owner);
-  download the `.exe` from Releases while signed in. The Claude Code plugin is fetched with
+  download the `.exe` from Releases (until the first release: Actions → build → Artifacts) while signed in. The Claude Code plugin is fetched with
   git, so git needs credentials for the private repo: `gh auth login` or Git Credential Manager
   (bundled with Git for Windows); check with `git ls-remote https://github.com/virtuoz-star/dxf-translate`.
   Background plugin auto-updates need a token in `GITHUB_TOKEN` (or `GH_TOKEN`) with read
@@ -95,7 +98,9 @@ To try a local checkout without installing: `claude --plugin-dir /path/to/dxf-tr
 
 Windows: download `dxf-translate-<version>.exe` from
 [GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases) — a single file, no
-install. The exe is not code-signed, so on first launch Windows SmartScreen shows
+install. Until the first release exists: GitHub → [Actions → build](https://github.com/virtuoz-star/dxf-translate/actions/workflows/build.yml) → latest green run on
+`master` → Artifacts → `dxf-translate-<commit>.exe` (a zip with the exe; needs GitHub sign-in,
+kept 30 days). The exe is not code-signed, so on first launch Windows SmartScreen shows
 "Windows protected your PC": click **More info → Run anyway**. Pick the order's translation
 file in the "Файл перекладу" input ("Обрати файл перекладу…", or drop the `.xlsx` onto the
 window; "×" clears it — a dropped `.xlsx` always goes there, everything else is the DXF input),

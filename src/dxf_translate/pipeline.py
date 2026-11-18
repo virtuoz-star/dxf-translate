@@ -149,9 +149,8 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
                 e = miss.setdefault((text, "phrase"), MissingText(text, "phrase", []))
                 e.files.append(res.en_list.name)
     res.missing = [miss[k] for k in sorted(miss)]
-    if res.translations:
-        res.missing += [MissingText(ua, "excel", [], f"{col} · {pn}")
-                        for ua, col, pn in res.translations.missing]
+    if res.translations and res.translations.missing:
+        _merge_excel_missing(res)
     _check_overlaps(res, [(s.dxf, s.src) for s in res.sheets])
     if review and res.sheets:
         try:
@@ -160,6 +159,39 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
             res.review = None
             res.warnings.append(f"review failed: {type(exc).__name__}: {exc}")
     return res
+
+
+_NO_TR = "   !! NO TRANSLATION: "
+
+
+def _merge_excel_missing(res: JobResult) -> None:
+    """Add the translation file's empty Name/Material cells as `excel` rows. A drawing text that
+    is only missing because of such a cell is not reported again as a `phrase`: its files move to
+    the `excel` row and it is removed from the sheets' missing lists and report lines, so the
+    user fixes it in the translation file (one place) and not in the glossary."""
+    excel = [MissingText(ua, "excel", [], f"{col} · {pn}") for ua, col, pn in res.translations.missing]
+    by_text: dict[str, MissingText] = {}
+    for e in excel:
+        by_text.setdefault(e.text, e)
+    kept = []
+    for m in res.missing:
+        e = by_text.get(m.text) if m.kind == "phrase" else None
+        if e is None:
+            kept.append(m)
+        else:
+            e.files += [f for f in m.files if f not in e.files]
+    res.missing = kept + excel
+    for s in res.sheets:
+        s.missing = [m for m in s.missing if not (m.kind == "phrase" and m.text in by_text)]
+        report = []
+        for line in s.report:
+            if line.startswith(_NO_TR):
+                left = [k for k in line[len(_NO_TR):].split(" | ") if k not in by_text]
+                if not left:
+                    continue
+                line = _NO_TR + " | ".join(left)
+            report.append(line)
+        s.report = report
 
 
 def _check_overlaps(res: JobResult, pairs: list[tuple[Path, Path]]) -> None:

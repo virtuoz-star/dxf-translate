@@ -148,3 +148,14 @@ def test_cli_translations(tmp_path):
     p = run(tmp_path, "--translations", old)
     assert p.returncode == 1
     assert "Name" in p.stderr and "Material" in p.stderr and "Traceback" not in p.stderr
+
+
+def test_empty_name_matching_drawing_name_single_excel_row(tmp_path):
+    make_sheet(tmp_path / "a.dxf", part_no="AS1.009", name="Кришка")
+    t = make(tmp_path / "t.xlsx", [HEAD, ["AS1.009", "Кришка", "", "Лист 3 алюм.", "Sheet 3 Al"]])
+    r = run_job([tmp_path], review=False, translations=t)
+    assert [(m.text, m.kind, m.files, m.hint) for m in r.missing] == [
+        ("Кришка", "excel", ["a.dxf"], "Name · AS1.009")]
+    assert not [m for m in r.sheets[0].missing if m.text == "Кришка"]
+    assert not [l for l in r.sheets[0].report if "NO TRANSLATION" in l]
+    assert r.exit_code == 2

@@ -381,3 +381,26 @@ def test_worker_passes_translations(qtbot, monkeypatch, tmp_path):
     with qtbot.waitSignal(w.finished, timeout=T):
         w.run()
     assert seen["translations"] == tmp_path / "t.xlsx"
+
+
+def test_new_translation_file_resets_result_panel(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf", name="Невідома деталь")
+    window.set_translations(_translations(tmp_path / "List.xlsx", []))
+    _run(qtbot, window, [tmp_path])
+    assert window.en_list_label.isVisibleTo(window) and window.missing_table.rowCount() == 1
+    window.set_translations(_translations(tmp_path / "Other.xlsx", []))
+    assert window.result is None and window.missing_table.rowCount() == 0
+    assert not window.en_list_label.isVisibleTo(window)
+    assert not window.open_en_list_btn.isVisibleTo(window)
+    assert not window.missing_box.isVisibleTo(window) and window.counts_label.text() == ""
+    assert not window.save_btn.isEnabled() and not window.open_dir_btn.isEnabled()
+    assert window.last_paths == [tmp_path]          # the DXF input is kept
+
+
+def test_same_translation_file_keeps_result(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    t = _translations(tmp_path / "List.xlsx", [])
+    window.set_translations(t)
+    _run(qtbot, window, [tmp_path])
+    window.set_translations(t)
+    assert window.result is not None and window.en_list_label.isVisibleTo(window)

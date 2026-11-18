@@ -200,7 +200,10 @@ class MainWindow(QMainWindow):
     def set_translations(self, path: Path | None) -> None:
         if self.busy:
             return
-        self.translations = Path(path) if path else None
+        new = Path(path) if path else None
+        if new != self.translations and self.result is not None:
+            self.clear_result()            # the shown result belongs to the previous file
+        self.translations = new
         if self.translations:
             self.translations_label.setText(self.translations.name)
             self.translations_label.setToolTip(str(self.translations))
@@ -373,6 +376,20 @@ class MainWindow(QMainWindow):
                 if hint:
                     self.log.appendPlainText(f"   → {hint}")
         self.log.appendPlainText(texts.LOG_DONE.format(out=res.out_dir))
+        self._refresh_controls()
+
+    def clear_result(self) -> None:
+        """Hide the result panel (counts, EN list, failures, overlaps, missing table)."""
+        self.result = None
+        self.counts_label.setText("")
+        self.progress.setRange(0, 1)
+        self.progress.setValue(0)
+        for w in (self.excel_warning, self.en_list_label, self.open_en_list_btn,
+                  self.failures_box, self.overlaps_box, self.missing_box):
+            w.hide()
+        self.failures_list.clear()
+        self.overlaps_list.clear()
+        self.missing_table.setRowCount(0)
         self._refresh_controls()
 
     def _refresh_controls(self) -> None:
