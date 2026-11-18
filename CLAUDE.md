@@ -11,7 +11,22 @@ Tests build synthetic sheets with `dxf_translate._selftest.make_sheet` (re-expor
 
 ## Windows build
 
-`uv run pyinstaller packaging/dxf-translate.spec` then `dist/dxf-translate --selftest` (exit 0). CI: `.github/workflows/test.yml` (push/PR, ubuntu + windows), `release.yml` (tag `v*` → exe on the GitHub Release). Fonts are bundled-only (`fonts.setup()` clears ezdxf's system font cache).
+`uv run pyinstaller packaging/dxf-translate.spec` then `dist/dxf-translate --selftest` (exit 0). CI: `.github/workflows/test.yml` (push to `master` + PRs, ubuntu + windows, `uv sync --locked`), `release.yml` (tag `v*` → exe on the GitHub Release). Fonts are bundled-only (`fonts.setup()` clears ezdxf's system font cache).
+
+## Release
+
+The version lives only in `src/dxf_translate/__init__.py` (`__version__`; `pyproject.toml`
+reads it via hatch dynamic version). `release.yml` fails if the tag is not `v<__version__>`.
+
+1. Bump `__version__` (`uv.lock` does not record a dynamic version, `uv lock --check` stays clean), run the tests.
+2. Commit on `master`: `release: vX.Y.Z`.
+3. Tag and push: `git tag vX.Y.Z && git push origin master vX.Y.Z`.
+4. Watch the workflow: `gh run watch` (or `gh run list --workflow release.yml`); it must end green
+   with `dxf-translate-vX.Y.Z.exe` attached to the GitHub Release.
+5. Smoke-test the released exe on Windows: download it, start it (first start is slow — one-file
+   unpack), drop an order folder whose path contains Cyrillic and spaces and has sub-folders
+   (e.g. `C:/Замовлення/AS029 тест/dxf/...` + the two Excel lists): sheets translated, `EN/`
+   created in the order root, review page opens.
 
 ## Regression check (before merging changes to translation, glossary or overlap logic)
 

@@ -67,12 +67,21 @@ Input: a list of paths (files and/or folders) and optional output dir.
 3. Glossary = base `glossary.yaml` merged with optional `glossary.yaml` in the
    order folder (order entries win).
 4. Translate every DXF → `<out>/dxf/*_EN.dxf` and `<out>/pdf/*.pdf`, where default `<out>` = `<first dropped folder>/EN` (or `<folder of first DXF>/EN` if only files were given)
-   (same naming as today).
+   (same naming as today). Inputs whose `<stem>_EN` output names coincide
+   (case-insensitive — e.g. `old/AS1.001.dxf` and `new/as1.001.DXF`) are **all** reported as
+   failures naming each other; none of them is translated (output names stay `<stem>_EN.*`).
+   A sheet that had a GOST frame but whose title block gave no Part No. (any sheet), no name
+   (first sheet; not on continuation sheets `_01`, `_02`…) or no material (part drawings; not
+   on assembly drawings "СБ" nor continuation sheets) gets a per-sheet warning
+   (`SheetResult.warnings`, surfaced in the result's warnings as `<file>: !! title block: …`);
+   it counts as "needs attention" (exit 2). Sheets without a frame (translated by hand
+   earlier) are not checked.
 5. Run overlap check against sources.
-6. Build review page `<out>/review/index.html`.
+6. Build review page `<out>/review/index.html` from this run's sheets only; a sheet whose
+   PDF is missing is skipped with a warning.
 7. Return a result object: sheets translated, failures (per file, with message),
    missing translations (unique texts, with file names where seen), overlaps
-   (per file, text, count), paths of output/review.
+   (per file, text, count), warnings, paths of output/review.
 
 Progress is reported through a callback (for the GUI progress bar).
 Failure of one DXF must not abort the others.
@@ -84,10 +93,12 @@ Translation output for the current order must be **content-identical** to the ex
 ### 4.2 Glossary
 
 * Format: YAML, sections mirroring today's constants (phrases, substrings, notes,
-  BOM materials, full materials, assembly suffix …).
+  BOM materials, full materials, assembly suffix …), plus `part_no_pattern`: the regex a
+  Part No. must match on the title block and in the Excel "Позначення" column (base
+  `"^AS"`; an order glossary may override it).
 * Base glossary is bundled (package data, embedded in the `.exe`).
 * Per-order `glossary.yaml` next to the inputs; the GUI writes user-entered
-  translations there.
+  translations there (the file is rewritten; YAML comments are not kept).
 * Promotion to base glossary: in Claude Code, "add order terms to base glossary" →
   Claude edits `data/glossary.yaml` and opens a PR; a release follows.
 
@@ -95,8 +106,11 @@ Translation output for the current order must be **content-identical** to the ex
 
 `dxf-translate <paths...> [--out DIR] [--no-review]` → runs `run_job`, prints the
 summary (incl. `!! NO TRANSLATION` lines and `TOTAL new overlaps: N`), exit code 0 on
-success, 1 if any file failed, 2 if missing translations or overlaps (so the skill can
-branch). Sub-commands or flags for running only the overlap check / review are allowed.
+success, 1 if any file failed, 2 if missing translations, title-block warnings or overlaps
+(so the skill can branch). Sub-commands or flags for running only the overlap check / review
+are allowed: `--overlaps-only` prints `checked N of M sheet(s)`, lists sheets without output
+as skipped and exits 1 if nothing was checked; `--crop PDF X Y` renders a 300 dpi PNG around a
+sheet point and lists the review crops that contain it.
 
 ### 4.4 Desktop app (PySide6)
 
@@ -117,7 +131,8 @@ branch). Sub-commands or flags for running only the overlap check / review are a
 * Skill `translate-drawings` encodes:
   * workflow: run CLI via `uv run --project <plugin dir> dxf-translate …`;
     on missing translations add them to order `glossary.yaml` (or base, on request)
-    and rerun; on overlaps inspect full-resolution crops and fix;
+    and rerun; on overlaps inspect full-resolution crops and fix — only the crops of the
+    reported point (review crops containing it, or a `--crop` render), never every crop;
   * target EN layout rules: whole GOST frame removed (border, side strip, title block,
     mirrored number box), sheet size and view positions unchanged, roughness sign kept,
     technical requirements bottom-right followed by "Part No.: / Name: / Material:",
@@ -129,8 +144,9 @@ branch). Sub-commands or flags for running only the overlap check / review are a
 
 ### 4.6 Release
 
-GitHub Actions on tag `v*`: run tests, build Windows `.exe` with PyInstaller
-(fonts + base glossary embedded), attach to GitHub Release.
+GitHub Actions on tag `v*`: check the tag equals `v` + `dxf_translate.__version__` (the only
+version source; `pyproject.toml` reads it dynamically), run tests, build Windows `.exe` with
+PyInstaller (fonts + base glossary embedded), attach to GitHub Release.
 
 ## 5. Testing
 

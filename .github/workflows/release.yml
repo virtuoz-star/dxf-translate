@@ -17,7 +17,15 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - run: uv sync --extra gui
+      - run: uv sync --locked --extra gui
+      - name: Tag matches package version
+        shell: bash
+        run: |
+          v=$(uv run python -c "import dxf_translate; print(dxf_translate.__version__)")
+          if [ "${{ github.ref_name }}" != "v$v" ]; then
+            echo "::error::tag ${{ github.ref_name }} does not match __version__ $v (src/dxf_translate/__init__.py)"
+            exit 1
+          fi
       - run: uv run pytest
       - run: uv run pyinstaller --noconfirm packaging/dxf-translate.spec
       - name: Selftest frozen exe
