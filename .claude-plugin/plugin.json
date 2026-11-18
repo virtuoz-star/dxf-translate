@@ -1,0 +1,10 @@
+{
+  "name": "dxf-translate",
+  "description": "Translate Ukrainian SolidWorks DXF drawings to English (glossary-driven, with overlap check and review page)",
+  "author": {
+    "name": "virtuoz-star"
+  },
+  "homepage": "https://github.com/virtuoz-star/dxf-translate",
+  "repository": "https://github.com/virtuoz-star/dxf-translate",
+  "keywords": ["dxf", "solidworks", "translation", "drawings"]
+}
