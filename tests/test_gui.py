@@ -1,5 +1,6 @@
 """Desktop window tests (offscreen Qt). Skipped when the `gui` extra is not installed."""
 import gc
+from pathlib import Path
 import os
 
 import pytest
@@ -160,7 +161,7 @@ def test_open_buttons(qtbot, window, tmp_path, monkeypatch):
     monkeypatch.setattr(window_mod.QDesktopServices, "openUrl", lambda u: opened.append(u.toLocalFile()))
     window.open_dir_btn.click()
     window.open_review_btn.click()
-    assert opened == [str(window.result.out_dir), str(window.result.review)]
+    assert [Path(u) for u in opened] == [Path(window.result.out_dir), Path(window.result.review)]
 
 
 def test_gc_paused_during_job_and_worker_released(qtbot, window, tmp_path):

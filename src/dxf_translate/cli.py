@@ -68,6 +68,11 @@ def main(argv: list[str] | None = None) -> None:
                     help="render the area around (X, Y) sheet mm of an EN PDF to a PNG and "
                          "list the review crops that contain that point")
     a = ap.parse_args(argv)
+    # Windows consoles/pipes default to a legacy code page (cp1252/cp866) that cannot
+    # encode Cyrillic report lines; always emit UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     if a.crop:
         try:
             x, y = float(a.crop[1].replace(",", ".")), float(a.crop[2].replace(",", "."))
