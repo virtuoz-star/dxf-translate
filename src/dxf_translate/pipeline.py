@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dxf_translate import glossary as glossary_mod
-from dxf_translate.excel import TranslationFile, read_translations
+from dxf_translate.excel import TranslationFile, export_en, read_translations
 from dxf_translate.overlaps import Overlap, find_overlaps
 from dxf_translate.review import build_review
 from dxf_translate.translate import SheetResult, translate_file
@@ -36,6 +36,7 @@ class JobResult:
     overlaps: list[Overlap] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     translations: TranslationFile | None = None
+    en_list: Path | None = None              # English production list written from the translation file
     order_dir: Path | None = None            # where the order glossary.yaml lives
     checked: int = 0                         # sheets the overlap check ran on
     skipped: list[str] = field(default_factory=list)   # --overlaps-only: no output to check
@@ -44,7 +45,8 @@ class JobResult:
     def exit_code(self) -> int:
         if self.failed:
             return 1
-        attention = self.missing or self.overlaps or any(s.warnings for s in self.sheets)
+        attention = (self.missing or self.overlaps or any(s.warnings for s in self.sheets)
+                     or any(w.startswith("en_list_failed:") for w in self.warnings))
         return 2 if attention else 0
 
 
@@ -136,6 +138,15 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
                 e.files.append(src.name)
         if progress:
             progress(i, len(dxfs), src.name)
+    if res.translations:
+        try:
+            res.en_list, untranslated = export_en(res.translations, g, out)
+        except Exception as exc:                 # e.g. the old list is open in Excel
+            res.warnings.append(f"en_list_failed: {type(exc).__name__}: {exc}")
+        else:
+            for text in untranslated:
+                e = miss.setdefault((text, "phrase"), MissingText(text, "phrase", []))
+                e.files.append(res.en_list.name)
     res.missing = [miss[k] for k in sorted(miss)]
     if res.translations:
         res.missing += [MissingText(ua, "excel", [], f"{col} · {pn}")

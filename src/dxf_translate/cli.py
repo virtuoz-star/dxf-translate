@@ -94,6 +94,8 @@ def main(argv: list[str] | None = None) -> None:
         else:
             res = run_job(a.paths, a.out, review=not a.no_review, translations=a.translations)
             _print(res)
+            if res.en_list:
+                print(f"EN production list: {res.en_list}")
             if res.review:
                 print(f"Review: {res.review}")
     except (GlossaryError, ValueError) as e:
