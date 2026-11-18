@@ -60,6 +60,14 @@ def test_missing_name_reported(tmp_path):
     assert "Лист 3 алюм." not in g.bom_material
 
 
+def test_cyrillic_en_without_ua_reported(tmp_path):
+    g = empty()
+    row = ["AS1.001", None, "Балка", "Лист 3 алюм.", "Sheet 3 Al"]
+    tf = read_translations(g, make(tmp_path / "t.xlsx", [HEAD, row]))
+    assert tf.missing == [("Балка", "Name", "AS1.001")]
+    assert g.parts["AS1.001"] == (None, "Sheet 3 Al")
+
+
 def test_non_data_rows_ignored(tmp_path):
     g = empty()
     tf = read_translations(g, make(tmp_path / "t.xlsx", [HEAD, ["Деталі"], ["BK1", "Кришка", None]]))

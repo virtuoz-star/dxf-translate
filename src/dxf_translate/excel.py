@@ -8,6 +8,7 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.cell.cell import MergedCell
+from openpyxl.formula.tokenizer import Tokenizer
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 from dxf_translate.glossary import Glossary, GlossaryError
@@ -82,6 +83,8 @@ def read_translations(g: Glossary, path: Path) -> TranslationFile:
             ok = bool(en) and not CYR.search(en)
             en_vals[en_col] = en if ok else None
             if not ua:
+                if en and not ok:                  # Cyrillic in the EN cell, UA cell empty
+                    found.append((cols[en_col], en, en_col))
                 continue
             if not ok:
                 found.append((cols[en_col], ua, en_col))
@@ -99,18 +102,63 @@ def read_translations(g: Glossary, path: Path) -> TranslationFile:
     return tf
 
 
+_CELL = re.compile(r"^(\$?)([A-Za-z]{1,3})(\$?)(\d+)$")
+_COL = re.compile(r"^(\$?)([A-Za-z]{1,3})$")
+_ROW = re.compile(r"^\$?\d+$")
+
+
+class _DroppedRef(Exception):
+    """A formula reference points into a dropped column (arg: 1-based source column)."""
+
+
+def _shift_ref(ref: str, new_col: dict[int, int], sheet: str) -> str:
+    """Rewrite one RANGE operand (`A1`, `$F$5`, `A1:B2`, `F:F`, `3:3`, `Sheet1!F5`) through the
+    column mapping. Other sheets, names and anything unrecognised stay as they are."""
+    prefix, sep, body = ref.rpartition("!")
+    if sep and prefix.strip("'").replace("''", "'") != sheet:
+        return ref
+    parts = body.split(":")
+    if len(parts) > 2:
+        return ref
+    out = []
+    for part in parts:
+        m = _CELL.match(part)
+        if m is None and len(parts) == 2:
+            m = _COL.match(part)
+            if m is None and _ROW.match(part):
+                out.append(part)
+                continue
+        if m is None:
+            return ref                              # a defined name or similar
+        c = column_index_from_string(m.group(2).upper())
+        if c not in new_col:
+            raise _DroppedRef(c)
+        out.append(m.group(1) + get_column_letter(new_col[c]) + "".join(m.groups()[2:]))
+    return prefix + sep + ":".join(out)
+
+
+def _shift_formula(f: str, new_col: dict[int, int], sheet: str) -> str:
+    tok = Tokenizer(f)
+    for t in tok.items:
+        if t.type == "OPERAND" and t.subtype == "RANGE":
+            t.value = _shift_ref(t.value, new_col, sheet)
+    return "=" + "".join(t.value for t in tok.items)
+
+
 def en_list_path(tf: TranslationFile, out_dir: Path) -> Path:
     return Path(out_dir) / f"{tf.path.stem}_EN.xlsx"
 
 
-def export_en(tf: TranslationFile, g: Glossary, out_dir: Path) -> tuple[Path, list[str]]:
+def export_en(tf: TranslationFile, g: Glossary,
+              out_dir: Path) -> tuple[Path, list[str], list[str]]:
     """Write `<out_dir>/<stem>_EN.xlsx`: the first sheet of the translation file without the UA
     columns Назва/Матеріал, other Cyrillic cells translated via `g.lookup("phrases")`.
-    Styles, column widths (shifted), row heights and merges (recomputed) are kept. Formula cells
-    get their cached value (the column shift would break references), the formula only if the
-    file has no cached value. Returns the path and the Cyrillic cells left untranslated (UA
-    text, first occurrence order; Name/Material cells of data rows are not repeated here, they
-    are already reported by `read_translations`)."""
+    Styles, column widths (shifted), row heights and merges (recomputed) are kept. A formula cell
+    gets its cached value; without one (file saved by a program that doesn't compute) the
+    formula is kept with its same-sheet references moved to the new columns.
+    Returns (path, untranslated, problems): the Cyrillic cells left untranslated (UA text, first
+    occurrence order; Name/Material cells of data rows are not repeated here, `read_translations`
+    reports them), and formulas that refer to a dropped column (left empty)."""
     src_wb = openpyxl.load_workbook(tf.path)
     src = src_wb.worksheets[0]
     cached = openpyxl.load_workbook(tf.path, data_only=True).worksheets[0]
@@ -124,6 +172,7 @@ def export_en(tf: TranslationFile, g: Glossary, out_dir: Path) -> tuple[Path, li
     ws = wb.active
     ws.title = src.title
     missing: list[str] = []
+    problems: list[str] = []
     for row in src.iter_rows():
         r = row[0].row
         pn = _text(src.cell(r, pn_col).value)
@@ -141,7 +190,16 @@ def export_en(tf: TranslationFile, g: Glossary, out_dir: Path) -> tuple[Path, li
             v = c.value
             if c.data_type == "f":
                 cv = cached.cell(r, c.column).value
-                v = v if cv is None else cv
+                if cv is not None:
+                    v = cv
+                elif isinstance(v, str):
+                    try:
+                        v = _shift_formula(v, new_col, src.title)
+                    except _DroppedRef as e:
+                        name = next(h for h in DROP if tf.cols[h] == e.args[0])
+                        problems.append(f"formula in {c.coordinate} ({c.value}) refers to "
+                                        f"dropped column {name}")
+                        v = None
             if isinstance(v, str) and CYR.search(v):
                 en = g.lookup("phrases", v)
                 if en is not None:
@@ -172,4 +230,4 @@ def export_en(tf: TranslationFile, g: Glossary, out_dir: Path) -> tuple[Path, li
     out = en_list_path(tf, out_dir)
     out.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out)
-    return out, missing
+    return out, missing, problems

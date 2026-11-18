@@ -46,7 +46,7 @@ class JobResult:
         if self.failed:
             return 1
         attention = (self.missing or self.overlaps or any(s.warnings for s in self.sheets)
-                     or any(w.startswith("en_list_failed:") for w in self.warnings))
+                     or any(w.startswith(("en_list_failed:", "en_list_formula:")) for w in self.warnings))
         return 2 if attention else 0
 
 
@@ -140,10 +140,11 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
             progress(i, len(dxfs), src.name)
     if res.translations:
         try:
-            res.en_list, untranslated = export_en(res.translations, g, out)
+            res.en_list, untranslated, problems = export_en(res.translations, g, out)
         except Exception as exc:                 # e.g. the old list is open in Excel
             res.warnings.append(f"en_list_failed: {type(exc).__name__}: {exc}")
         else:
+            res.warnings += [f"en_list_formula: {p}" for p in problems]
             for text in untranslated:
                 e = miss.setdefault((text, "phrase"), MissingText(text, "phrase", []))
                 e.files.append(res.en_list.name)

@@ -29,7 +29,8 @@ def make(path, section="Деталі"):
 def export(tmp_path, section="Деталі"):
     g = glossary.load_base()
     tf = read_translations(g, make(tmp_path / "List.xlsx", section))
-    out, missing = export_en(tf, g, tmp_path / "out")
+    out, missing, problems = export_en(tf, g, tmp_path / "out")
+    assert problems == []
     return out, missing, openpyxl.load_workbook(out).worksheets[0]
 
 
@@ -65,7 +66,7 @@ def test_merge_inside_dropped_columns_removed_and_spanning_shrinks(tmp_path):
     ws.merge_cells("D4:D5")             # inside dropped Назва
     ws.merge_cells("C4:E4")             # spans Назва -> C4:D4
     wb.save(p)
-    out, _ = export_en(read_translations(g, p), g, tmp_path / "out")
+    out, _, _ = export_en(read_translations(g, p), g, tmp_path / "out")
     ranges = sorted(str(r) for r in openpyxl.load_workbook(out).active.merged_cells.ranges)
     assert ranges == ["A2:G2", "C4:D4"]
 
@@ -107,3 +108,43 @@ def test_cli_prints_en_list(tmp_path):
     t = make(tmp_path / "List.xlsx")
     p = run(tmp_path, "--no-review", "--translations", t)
     assert f"EN production list: {tmp_path / 'EN' / 'List_EN.xlsx'}" in p.stdout, p.stdout + p.stderr
+
+
+# --- formulas without a cached value (file saved by openpyxl) ------------------
+
+def export_formulas(tmp_path, cells):
+    g = glossary.load_base()
+    p = make(tmp_path / "List.xlsx")
+    wb = openpyxl.load_workbook(p)
+    for coord, f in cells.items():
+        wb.active[coord] = f
+    wb.save(p)
+    out, missing, problems = export_en(read_translations(g, p), g, tmp_path / "out")
+    return openpyxl.load_workbook(out).active, missing, problems
+
+
+def test_formula_refs_follow_column_shift(tmp_path):
+    # source: F=Кільк. -> new E, I=Довжина -> new G; B stays B
+    ws, _, problems = export_formulas(tmp_path, {
+        "F4": "=F3*2", "B4": "=SUM(B3:B3)+1", "I4": "=$I$3+SUM(E3:I3)+COUNT(F:F)+Sheet2!F3+3:3"})
+    assert problems == []
+    assert ws["E4"].value == "=E3*2"
+    assert ws["B4"].value == "=SUM(B3:B3)+1"
+    assert ws["G4"].value == "=$G$3+SUM(D3:G3)+COUNT(E:E)+Sheet2!F3+3:3"
+
+
+def test_formula_into_dropped_column_reported(tmp_path):
+    ws, missing, problems = export_formulas(tmp_path, {"F4": "=LEN(D3)"})
+    assert ws["E4"].value is None and missing == []
+    assert problems == ["formula in F4 (=LEN(D3)) refers to dropped column Назва"]
+
+
+def test_job_reports_formula_problem(tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    p = make(tmp_path / "List.xlsx")
+    wb = openpyxl.load_workbook(p)
+    wb.active["F4"] = "=G3"
+    wb.save(p)
+    r = run_job([tmp_path], review=False, translations=p)
+    assert "en_list_formula: formula in F4 (=G3) refers to dropped column Матеріал" in r.warnings
+    assert r.en_list.is_file() and r.exit_code == 2
