@@ -14,6 +14,7 @@ def make_sheet(
     material: str = "Лист 3 алюм.",
     notes: tuple[str, str] = ("*Розмір для довідок.", "Гострі крайки притупити."),
     width: int = 420,
+    extra_line: tuple[tuple[float, float], tuple[float, float]] | None = None,
 ) -> Path:
     doc = ezdxf.new("R2010")
     doc.header["$LIMMIN"] = (0, 0)
@@ -49,6 +50,9 @@ def make_sheet(
     msp.add_mtext(callout, dxfattribs={"insert": (120, 210), "char_height": 3.5,
                                        "attachment_point": 7})
     msp.add_line((120, 210), (140, 210), dxfattribs={"layer": "0"})
+
+    if extra_line:
+        msp.add_line(*extra_line, dxfattribs={"layer": "0"})
 
     doc.saveas(path)
     return path

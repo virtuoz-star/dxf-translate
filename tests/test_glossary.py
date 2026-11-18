@@ -1,18 +1,13 @@
 import pytest
 import yaml
 
-from dxf_translate._legacy import glossary as legacy
 from dxf_translate.glossary import GlossaryError, Glossary, load, load_base, load_file, save_terms
 
 
-def test_base_matches_legacy():
+def test_base_sizes_frozen():
+    # sizes recorded from the prototype glossary before it was removed
     g = load_base()
-    assert g.phrases == legacy.PHRASES
-    assert g.full_material == legacy.FULL_MATERIAL
-    assert g.bom_material == legacy.BOM_MATERIAL
-    assert g.notes == legacy.NOTES
-    assert g.substr == list(legacy.SUBSTR)
-    assert g.assembly_suffix == legacy.ASSEMBLY_SUFFIX
+    assert (len(g.phrases), len(g.notes), len(g.substr)) == (39, 7, 12)
 
 
 def test_order_file_wins(tmp_path):

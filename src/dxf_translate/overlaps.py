@@ -1,27 +1,25 @@
 """Find translated texts that run into drawing geometry.
 
-Usage: python check_overlaps.py <source_dxf_dir> <translated_dxf_dir> --font <ttf>
-
 For every text (also inside dimensions and SolidWorks note blocks) the real text box is
 measured with the PDF font, shrunk a little (so a text resting on its own shelf/underline
 is not reported), and tested against all lines/arcs/circles of the sheet.
-A hit is reported only if the same spot was free in the Ukrainian source, i.e. the overlap
+A hit is reported only if the same spot was free in the source, i.e. the overlap
 was caused by translation, not drawn that way in SolidWorks.
 """
 from __future__ import annotations
 
-import argparse
 import math
 import re
-import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import ezdxf
-from ezdxf import bbox, disassemble
+from ezdxf import bbox, disassemble  # noqa: F401
 from ezdxf.fonts import fonts
 from ezdxf.math import Vec2
 
-FONT = "OpenGostTypeA-Regular.ttf"
+from .fonts import FONT_NAME, setup
+
 LETTER = re.compile(r"[A-Za-zА-Яа-яІіЇїЄє]")
 
 
@@ -41,7 +39,7 @@ def segments(entities):
     return [(a, b) for a, b in segs if (b - a).magnitude > 1e-6]
 
 
-def text_boxes(entities, k):
+def text_boxes(entities, k, font_name: str = FONT_NAME, letter: re.Pattern = LETTER):
     """(text, frame) for every MTEXT with letters.
     frame = (origin, u, n, x0, y0, x1, y1): a rectangle in the text's own coordinates
     (u along the text, n up), measured with the real font, shrunk a little across the
@@ -51,7 +49,7 @@ def text_boxes(entities, k):
         if e.dxftype() != "MTEXT":
             continue
         txt = e.plain_text().strip()
-        if not LETTER.search(txt):
+        if not letter.search(txt):
             continue
         h = e.dxf.char_height
         mh = re.search(r"\\H([\d.]+)x;", e.text)
@@ -59,7 +57,7 @@ def text_boxes(entities, k):
             h *= float(mh.group(1))
         m = re.search(r"\\W([\d.]+);", e.text)
         wf = float(m.group(1)) if m else 1.0
-        font = fonts.make_font(FONT, cap_height=h)
+        font = fonts.make_font(font_name, cap_height=h)
         lines = [l for l in e.plain_text().split("\n")]
         w = max(font.text_width(l) for l in lines) * wf
         line_h = 1.667 * h * e.dxf.get("line_spacing_factor", 1.0)
@@ -108,13 +106,14 @@ def seg_hits_box(a, b, box):
     return True
 
 
-def analyse(path: Path, font_name: str):
+def analyse(path: Path, font_name: str | None = None):
+    font_name = font_name or setup()
     doc = ezdxf.readfile(path)
     for st in doc.styles:
         st.dxf.font = font_name
     k = doc.header["$LIMMAX"][1] / 297.0
     ents = list(disassemble.recursive_decompose(doc.modelspace()))
-    return k, text_boxes(ents, k), segments(ents)
+    return k, text_boxes(ents, k, font_name), segments(ents)
 
 
 def hits(boxes, segs):
@@ -128,34 +127,23 @@ def hits(boxes, segs):
     return res
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("src_dir", type=Path)
-    ap.add_argument("out_dir", type=Path)
-    ap.add_argument("--font", required=True)
-    a = ap.parse_args()
-    font = Path(a.font).resolve()
-    fonts.font_manager.build([str(font.parent)])
-    global FONT
-    FONT = font.name
-
-    total = 0
-    for out in sorted(a.out_dir.glob("*_EN.dxf")):
-        src = next(a.src_dir.glob(out.stem[:-3] + ".[dD][xX][fF]"), None)
-        k, boxes, segs = analyse(out, font.name)
-        new = hits(boxes, segs)
-        if src is not None and new:
-            _, sboxes, ssegs = analyse(src, font.name)
-            old = hits(sboxes, ssegs)
-            # same anchor (insert point) overlapped already in the source -> not ours
-            new = [h for h in new
-                   if not any((h[1][0] - o[1][0]).magnitude < 3 * k for o in old)]
-        for txt, fr, n in new:
-            total += 1
-            x, y = fr[0].x / k, fr[0].y / k
-            print(f"{out.name}: '{txt[:60]}' at ({x:.0f}, {y:.0f}) mm crosses {n} line(s)")
-    print(f"TOTAL new overlaps: {total}")
+@dataclass
+class Overlap:
+    file: str
+    text: str
+    x_mm: float
+    y_mm: float
+    lines: int
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def find_overlaps(out_dxf: Path, src_dxf: Path | None) -> list[Overlap]:
+    """Overlaps in out_dxf; those already present at the same spot in src_dxf are dropped."""
+    font = setup()
+    k, boxes, segs = analyse(out_dxf, font)
+    new = hits(boxes, segs)
+    if src_dxf is not None and new:
+        _, sboxes, ssegs = analyse(src_dxf, font)
+        old = hits(sboxes, ssegs)
+        # same anchor (insert point) overlapped already in the source -> not ours
+        new = [h for h in new if not any((h[1][0] - o[1][0]).magnitude < 3 * k for o in old)]
+    return [Overlap(out_dxf.name, txt, fr[0].x / k, fr[0].y / k, n) for txt, fr, n in new]
