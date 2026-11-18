@@ -99,3 +99,7 @@ substr:
 
 # user: no "(welded assembly)" next to the name
 assembly_suffix: ''
+
+# regex a Part No. must match (title block on the sheet, "Позначення" column in Excel);
+# an order glossary.yaml may override it, e.g. "^(AS|BK)"
+part_no_pattern: "^AS"

@@ -15,6 +15,7 @@ def make_sheet(
     path: Path,
     *,
     callout: str = "4 отв. Ø6",
+    part_no: str = "AS1.001",
     name: str = "Балка",
     material: str = "Лист 3 алюм.",
     notes: tuple[str, str] = ("*Розмір для довідок.", "Гострі крайки притупити."),
@@ -42,7 +43,7 @@ def make_sheet(
 
     # 2. title-block texts right after the frame lines
     tx = width - 120
-    msp.add_mtext("AS1.001", dxfattribs={"insert": (tx, 50), "char_height": 7})
+    msp.add_mtext(part_no, dxfattribs={"insert": (tx, 50), "char_height": 7})
     msp.add_mtext(name, dxfattribs={"insert": (tx, 40), "char_height": 7})
     msp.add_mtext(material, dxfattribs={"insert": (tx, 20), "char_height": 3.5})
 
@@ -67,7 +68,8 @@ def run() -> tuple[int, str]:
     """Translate one generated sheet in a temp dir; return (exit code, message)."""
     from dxf_translate.pipeline import run_job
 
-    with tempfile.TemporaryDirectory(prefix="dxf-translate-selftest-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="dxf-translate-selftest-",
+                                     ignore_cleanup_errors=True) as tmp:
         order = Path(tmp) / "order"
         order.mkdir()
         make_sheet(order / "AS1.001.dxf")

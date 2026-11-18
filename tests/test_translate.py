@@ -56,3 +56,48 @@ def test_unsupported_sheet(tmp_path):
     src = make_sheet(tmp_path / "x.DXF", width=300)
     with pytest.raises(UnsupportedSheet):
         translate_file(src, tmp_path / "out", load_base())
+
+
+def test_title_block_warnings_rules():
+    from dxf_translate.translate import title_block_warnings as tbw
+    assert tbw(0, None, None, None, False, False, []) == []           # hand-translated sheet
+    assert tbw(44, "AS1", "Балка", "Лист", False, False, []) == []
+    assert tbw(44, "AS1", "Збірка", None, True, False, []) == []      # assembly: no material
+    assert tbw(52, "AS1", None, None, False, True, []) == []          # continuation sheet
+    w = tbw(44, None, "Балка", "Лист", False, False, ["BK1.001"])
+    assert len(w) == 1 and "Part No." in w[0] and "'BK1.001'" in w[0] and "part_no_pattern" in w[0]
+    assert len(tbw(44, "AS1", None, None, False, False, [])) == 2
+
+
+def test_part_no_outside_pattern_warns(tmp_path):
+    res, doc = run(tmp_path, part_no="BK1.001")
+    assert res.part_no is None
+    assert any("Part No. not found" in w and "BK1.001" in w for w in res.warnings)
+    assert res.report and not any("BK1.001" in l for l in res.report[1:])
+
+
+def test_part_no_pattern_from_glossary(tmp_path):
+    src = make_sheet(tmp_path / "BK1.001.DXF", part_no="BK1.001")
+    g = load_base()
+    g.part_no_pattern = r"^(AS|BK)"
+    res = translate_file(src, tmp_path / "out", g)
+    assert res.part_no == "BK1.001" and res.warnings == []
+    assert "Part No.: BK1.001" in " ".join(texts(ezdxf.readfile(res.dxf)))
+
+
+def test_clean_sheet_no_warnings(tmp_path):
+    res, _ = run(tmp_path)
+    assert res.warnings == []
+
+
+def test_missing_note_with_double_dot_is_satisfiable(tmp_path):
+    notes = ("*Розмір для довідок.", "Невідома вимога..")
+    res, _ = run(tmp_path, notes=notes)
+    keys = [m.text for m in res.missing if m.kind == "note"]
+    assert keys == ["Невідома вимога."]
+    g = load_base()
+    g.notes[keys[0]] = "Unknown requirement."
+    src = make_sheet(tmp_path / "AS1.002.DXF", notes=notes)
+    res2 = translate_file(src, tmp_path / "out", g)
+    assert not [m for m in res2.missing if m.kind == "note"]
+    assert "Unknown requirement." in " ".join(texts(ezdxf.readfile(res2.dxf)))

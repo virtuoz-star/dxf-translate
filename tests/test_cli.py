@@ -34,9 +34,40 @@ def test_cli_exit_codes(tmp_path):
 
 def test_overlaps_only(tmp_path):
     make_sheet(tmp_path / "a.dxf")
-    run(tmp_path, "--no-review")
+    first = run(tmp_path, "--no-review")
+    assert first.returncode == 0, first.stdout + first.stderr
     p = run(tmp_path, "--overlaps-only")
     assert p.returncode == 0 and "TOTAL new overlaps: 0" in p.stdout
+    assert "checked 1 of 1 sheet(s)" in p.stdout
+
+
+def test_overlaps_only_nothing_checked(tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    make_sheet(tmp_path / "b.dxf")
+    p = run(tmp_path, "--overlaps-only")
+    assert p.returncode == 1
+    assert "checked 0 of 2 sheet(s)" in p.stdout and "a.dxf: !! SKIPPED" in p.stdout
+    run(tmp_path / "a.dxf", "--out", tmp_path / "EN", "--no-review")
+    p = run(tmp_path, "--overlaps-only")
+    assert p.returncode == 0, p.stdout
+    assert "checked 1 of 2 sheet(s)" in p.stdout and "b.dxf: !! SKIPPED" in p.stdout
+
+
+def test_crop_flag(tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    assert run(tmp_path).returncode == 0
+    pdf = tmp_path / "EN" / "pdf" / "a_EN.pdf"
+    p = run("--crop", pdf, "130", "211,5")
+    assert p.returncode == 0, p.stderr
+    lines = p.stdout.splitlines()
+    point = [l for l in lines if l.startswith("point crop: ")]
+    assert len(point) == 1 and (tmp_path / "EN" / "review" / "points").is_dir()
+    from pathlib import Path
+    assert Path(point[0].split(": ", 1)[1]).is_file()
+    assert any(l.startswith("review crop: ") for l in lines)
+    assert run("--crop", tmp_path / "nope.pdf", "1", "1").returncode == 1
+    assert run("--crop", pdf, "x", "1").returncode == 1
+    assert run().returncode == 2                        # argparse: paths required
 
 
 def test_cli_malformed_order_glossary(tmp_path):

@@ -1,4 +1,5 @@
-"""Command line: dxf-translate PATH... [--out DIR] [--no-review] [--overlaps-only]."""
+"""Command line: dxf-translate PATH... [--out DIR] [--no-review] [--overlaps-only]
+or dxf-translate --crop PDF X Y (render the area around a reported point of a sheet)."""
 from __future__ import annotations
 
 import argparse
@@ -17,11 +18,15 @@ def _print(res: JobResult) -> None:
     for s in res.sheets:
         for line in s.report:
             print(line)
-    for name, msg in res.failed:
-        print(f"{name}: !! FAILED: {msg}")
+    _print_failed(res)
     for w in res.warnings:
         print(_WARN.get(w, w))
     print_overlaps(res)
+
+
+def _print_failed(res: JobResult) -> None:
+    for name, msg in res.failed:
+        print(f"{name}: !! FAILED: {msg}")
 
 
 def print_overlaps(res: JobResult) -> None:
@@ -30,17 +35,52 @@ def print_overlaps(res: JobResult) -> None:
     print(f"TOTAL new overlaps: {len(res.overlaps)}")
 
 
+def _overlaps_only(paths: list[Path], out: Path | None) -> JobResult:
+    res = check_overlaps_only(paths, out)
+    _print_failed(res)
+    total = res.checked + len(res.skipped) + sum(1 for n, _ in res.failed if n != "--overlaps-only")
+    print(f"checked {res.checked} of {total} sheet(s)")
+    for name in res.skipped:
+        print(f"{name}: !! SKIPPED: no {Path(name).stem}_EN.dxf in {res.out_dir / 'dxf'}")
+    print_overlaps(res)
+    return res
+
+
+def _crop(pdf: Path, x: float, y: float) -> int:
+    from dxf_translate.review import crop_point, review_crops_at
+
+    if not pdf.is_file():
+        print(f"error: {pdf}: no such PDF", file=sys.stderr)
+        return 1
+    for p in review_crops_at(pdf, x, y):
+        print(f"review crop: {p}")
+    print(f"point crop: {crop_point(pdf, x, y)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="dxf-translate", description="Translate SolidWorks DXF drawings UA -> EN")
-    ap.add_argument("paths", nargs="+", type=Path, help="DXF/XLSX files or folders")
+    ap.add_argument("paths", nargs="*", type=Path, help="DXF/XLSX files or folders")
     ap.add_argument("--out", type=Path, help="output folder (default: <input folder>/EN)")
     ap.add_argument("--no-review", action="store_true", help="skip the HTML review page")
     ap.add_argument("--overlaps-only", action="store_true", help="only check existing output")
+    ap.add_argument("--crop", nargs=3, metavar=("PDF", "X", "Y"),
+                    help="render the area around (X, Y) sheet mm of an EN PDF to a PNG and "
+                         "list the review crops that contain that point")
     a = ap.parse_args(argv)
+    if a.crop:
+        try:
+            x, y = float(a.crop[1].replace(",", ".")), float(a.crop[2].replace(",", "."))
+            code = _crop(Path(a.crop[0]), x, y)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            code = 1
+        sys.exit(code)
+    if not a.paths:
+        ap.error("the following arguments are required: paths")
     try:
         if a.overlaps_only:
-            res = check_overlaps_only(a.paths, a.out)
-            print_overlaps(res)
+            res = _overlaps_only(a.paths, a.out)
         else:
             res = run_job(a.paths, a.out, review=not a.no_review)
             _print(res)

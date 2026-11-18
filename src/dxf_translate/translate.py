@@ -48,6 +48,7 @@ class SheetResult:
     material: str | None
     missing: list[Missing] = field(default_factory=list)
     report: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)   # title-block info not found etc.
 
 
 class _MissingSet:
@@ -228,6 +229,31 @@ def tr_phrase(g: Glossary, text: str, missing: _MissingSet) -> str:
     return out
 
 
+def title_block_warnings(frame_lines: int, part_no, name, material, is_assembly: bool,
+                         continuation: bool, dropped_big: list[str]) -> list[str]:
+    """What the title block should have given but did not (its texts are deleted anyway).
+
+    Only sheets that had a GOST frame are checked (frame_lines == 0: translated by hand
+    earlier). Part No. is expected on every framed sheet; name on the first sheet only
+    (continuation sheets `_01`, `_02`... use the short title block); material only on
+    part drawings (an assembly drawing "СБ" has no material cell)."""
+    if not frame_lines:
+        return []
+    out = []
+    if part_no is None:
+        msg = "title block: Part No. not found"
+        if dropped_big:
+            msg += (f" (dropped {', '.join(repr(t) for t in dropped_big)}: "
+                    f"set part_no_pattern in the order glossary.yaml)")
+        out.append(msg)
+    if name is None and not continuation:
+        out.append("title block: name not found")
+    if material is None and not continuation and not is_assembly:
+        out.append("title block: material not found (a material missing from the glossary "
+                   "is dropped: add it to full_material + bom_material)")
+    return out
+
+
 def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
     doc = ezdxf.readfile(src)
     msp = doc.modelspace()
@@ -247,6 +273,7 @@ def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
     # 2. title-block texts: collect info, then delete
     part_no = name = material = None
     is_assembly = False
+    dropped_big = []                # big non-Cyrillic title-block texts that are not a Part No.
     notes_ent = None
     # sheet-format texts are written right after the frame lines, as one run of MTEXT
     #     (the frame lines were already deleted, so model space now starts with that run)
@@ -266,10 +293,12 @@ def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
         h = e.dxf.char_height / k
         if t == "СБ":
             is_assembly = True
-        elif h > 5 and t.startswith("AS"):
+        elif h > 5 and g.is_part_no(t):
             part_no = t.rstrip(".")
         elif h > 5 and CYR.search(t):
             name = t
+        elif h > 5 and t:
+            dropped_big.append(t)
         elif g.lookup("full_material", t) is not None:
             material = t
         msp.delete_entity(e)
@@ -363,9 +392,10 @@ def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
         raw = [s.strip() for s in notes_ent.plain_text().split("\n")]
         items = [s for s in raw if s and not re.fullmatch(r"\d+\.", s)]
         for i, s in enumerate(items, 1):
-            en = g.lookup("notes", re.sub(r"\.+$", ".", s))
+            key = re.sub(r"\.+$", ".", s)
+            en = g.lookup("notes", key)
             if en is None:
-                missing.add(s, "note")
+                missing.add(key, "note")
                 en = s
             note_lines.append(f"{i}.  {en}")
         msp.delete_entity(notes_ent)
@@ -427,8 +457,11 @@ def process(src: Path, dst_dxf: Path, g: Glossary, report: list[str]):
                   f"Part No={part_no}, name={name}, material={material}")
     if missing:
         report.append("   !! NO TRANSLATION: " + " | ".join(missing.keys_sorted()))
+    warnings = title_block_warnings(len(lead), part_no, name, material, is_assembly,
+                                    sheet_no is not None and int(sheet_no.group(1)) > 0,
+                                    dropped_big)
     info_out = dict(frame_lines=len(lead), part_no=part_no, name=name, material=material,
-                    missing=missing.items_sorted())
+                    missing=missing.items_sorted(), warnings=warnings)
     return doc, w_mm, k, info_out
 
 

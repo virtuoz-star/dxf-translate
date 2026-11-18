@@ -9,7 +9,8 @@ from pathlib import Path
 import yaml
 
 TABLES = ("phrases", "full_material", "bom_material", "notes")
-SECTIONS = (*TABLES, "substr", "assembly_suffix")
+SECTIONS = (*TABLES, "substr", "assembly_suffix", "part_no_pattern")
+DEFAULT_PART_NO_PATTERN = r"^AS"
 
 
 class GlossaryError(Exception):
@@ -29,8 +30,12 @@ class Glossary:
     notes: dict[str, str]
     substr: list[tuple[str, str]]
     assembly_suffix: str = ""
+    part_no_pattern: str | None = None     # regex a title-block / Excel Part No. must match
     parts: dict[str, tuple[str | None, str | None]] = field(default_factory=dict)
     _index: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def is_part_no(self, text: str) -> bool:
+        return re.search(self.part_no_pattern or DEFAULT_PART_NO_PATTERN, text) is not None
 
     def lookup(self, table: str, text: str) -> str | None:
         if table not in TABLES:
@@ -54,6 +59,8 @@ class Glossary:
                 have.add(pat)
         if other.assembly_suffix:
             self.assembly_suffix = other.assembly_suffix
+        if other.part_no_pattern is not None:
+            self.part_no_pattern = other.part_no_pattern
 
 
 def _parse(path: Path) -> Glossary:
@@ -89,6 +96,15 @@ def _parse(path: Path) -> Glossary:
         except re.error as e:
             raise GlossaryError(f"{path}: bad regex in 'substr': {pat!r}: {e}") from e
     kw["assembly_suffix"] = str(data.get("assembly_suffix") or "")
+    pnp = data.get("part_no_pattern")
+    if pnp is not None:
+        if not isinstance(pnp, str) or not pnp:
+            raise GlossaryError(f"{path}: 'part_no_pattern' must be a non-empty regex string")
+        try:
+            re.compile(pnp)
+        except re.error as e:
+            raise GlossaryError(f"{path}: bad regex in 'part_no_pattern': {pnp!r}: {e}") from e
+        kw["part_no_pattern"] = pnp
     return Glossary(**kw)
 
 

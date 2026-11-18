@@ -120,3 +120,33 @@ def test_save_terms_non_mapping_section(tmp_path):
     f.write_text("phrases:\n  - a\n", encoding="utf-8")
     with pytest.raises(GlossaryError, match=r"glossary\.yaml.*phrases"):
         save_terms(f, {"phrases": {"Балка": "Beam"}})
+
+
+def test_part_no_pattern_base_and_order_override(tmp_path):
+    assert load_base().part_no_pattern == "^AS"
+    g = load(tmp_path)
+    assert g.is_part_no("AS1.001") and not g.is_part_no("BK1.001")
+    (tmp_path / "glossary.yaml").write_text('part_no_pattern: "^(AS|BK)"\n', encoding="utf-8")
+    g = load(tmp_path)
+    assert g.is_part_no("BK1.001") and g.is_part_no("AS1.001")
+    (tmp_path / "glossary.yaml").write_text('phrases: {a: b}\n', encoding="utf-8")
+    assert load(tmp_path).part_no_pattern == "^AS"     # not set in the order file: base kept
+
+
+def test_part_no_pattern_default_without_yaml():
+    assert Glossary({}, {}, {}, {}, []).is_part_no("AS2")
+
+
+@pytest.mark.parametrize("val", ['"[unclosed"', "123", '""'])
+def test_part_no_pattern_bad(tmp_path, val):
+    p = tmp_path / "glossary.yaml"
+    p.write_text(f"part_no_pattern: {val}\n", encoding="utf-8")
+    with pytest.raises(GlossaryError, match="part_no_pattern"):
+        load_file(p)
+
+
+def test_save_terms_keeps_part_no_pattern(tmp_path):
+    p = tmp_path / "glossary.yaml"
+    p.write_text('part_no_pattern: "^BK"\n', encoding="utf-8")
+    save_terms(p, {"phrases": {"Балка": "Beam"}})
+    assert load_file(p).part_no_pattern == "^BK"

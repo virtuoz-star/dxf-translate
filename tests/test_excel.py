@@ -60,3 +60,14 @@ def test_add_excel_pairs_warnings_collected(tmp_path, capsys):
     add_excel_pairs(load_base(), tmp_path / "ua.xlsx", tmp_path / "en.xlsx", warnings=w)
     assert len(w) == 1 and "Балка" in w[0]
     assert capsys.readouterr().out == ""
+
+
+def test_excel_part_no_pattern(tmp_path):
+    ua = make(tmp_path / "ua.xlsx", UA_ROWS + [[2, "BK2.002", "Кришка", "Лист 3 алюм."]])
+    en = make(tmp_path / "en.xlsx", EN_ROWS + [[2, "BK2.002", "Lid-EN", "Sheet 3 Al-EN"]])
+    g = Glossary({}, {}, {}, {}, [])
+    add_excel_pairs(g, ua, en)
+    assert set(g.parts) == {"AS1.001"}                 # default ^AS
+    g = Glossary({}, {}, {}, {}, [], part_no_pattern=r"^(AS|BK)")
+    add_excel_pairs(g, ua, en)
+    assert set(g.parts) == {"AS1.001", "BK2.002"}

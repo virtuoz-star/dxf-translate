@@ -54,7 +54,7 @@ def add_excel_pairs(g: Glossary, ua: Path, en: Path, *, warnings: list[str] | No
         if MATERIAL_COL in r_ua:
             mat_col = r_ua.index(MATERIAL_COL)
             pn_col, name_col = r_ua.index("Позначення"), r_ua.index("Назва")
-        elif pn_col is not None and isinstance(r_en[pn_col], str) and r_en[pn_col].startswith("AS"):
+        elif pn_col is not None and isinstance(r_en[pn_col], str) and g.is_part_no(r_en[pn_col]):
             mat = r_en[mat_col] if mat_col < len(r_en) else None
             g.parts[r_en[pn_col].strip()] = (r_en[name_col], mat)
         for i, (u, e) in enumerate(zip(r_ua, r_en)):

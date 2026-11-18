@@ -5,6 +5,7 @@ import html
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 import ezdxf
 import pymupdf
@@ -53,19 +54,34 @@ def cluster(items, maxw=MAXW, maxh=MAXH):
     return groups
 
 
-def build_review(out_dir: Path) -> Path:
-    """Read out_dir/dxf/*_EN.dxf and out_dir/pdf; write out_dir/review/index.html + crops/."""
+def build_review(out_dir: Path, sheets: list[Path] | None = None,
+                 warnings: list[str] | None = None) -> Path:
+    """Read the EN DXFs (`sheets`, default: every out_dir/dxf/*_EN.dxf) and their PDFs in
+    out_dir/pdf; write out_dir/review/index.html + crops/ + meta.json. A sheet without its
+    PDF is skipped with a message in `warnings`."""
     out_dir = Path(out_dir)
+    if sheets is None:
+        sheets = sorted((out_dir / "dxf").glob("*_EN.dxf"))
+    todo = []
+    for p in sorted(map(Path, sheets)):
+        if (out_dir / "pdf" / (p.stem + ".pdf")).is_file():
+            todo.append(p)
+        else:
+            msg = f"review: {p.stem}.pdf not found, sheet skipped"
+            if warnings is None:
+                print(msg)
+            else:
+                warnings.append(msg)
     font = setup()
     review = out_dir / "review"
     crops_dir = review / "crops"
     crops_dir.mkdir(parents=True, exist_ok=True)
-    for f in crops_dir.glob("*"):
-        f.unlink()
+    for f in [*crops_dir.glob("*"), *(review / "points").glob("*.png")]:
+        f.unlink()                                 # points/: --crop renders of the last run
 
     sheets = []
     total = 0
-    for p in sorted((out_dir / "dxf").glob("*_EN.dxf")):
+    for p in todo:
         k, boxes, segs = co.analyse(p, font)
         items = []
         others = [e for e in co.disassemble.recursive_decompose(ezdxf.readfile(p).modelspace())
@@ -132,9 +148,52 @@ def build_review(out_dir: Path) -> Path:
         for c in m["crops"]:
             x0, y0, x1, y1 = c["rect"]
             lis = "".join(f'<li><code>{e(t[:120]).replace(chr(10), " ⏎ ")}</code> <span class="pos">({x:.0f}, {y:.0f})</span></li>' for t, x, y in c["texts"])
-            parts.append(f'<figure><div class="scroll"><a href="crops/{c["file"]}" target="_blank"><img src="crops/{c["file"]}" width="{c["w"]}" height="{c["h"]}" alt="" loading="lazy"></a></div>'
-                         f'<figcaption><b>{c["file"]}</b> <span class="pos">x {x0:.0f}–{x1:.0f}, y {y0:.0f}–{y1:.0f} mm</span><ul>{lis}</ul></figcaption></figure>')
+            u = e(quote(c["file"]))
+            parts.append(f'<figure><div class="scroll"><a href="crops/{u}" target="_blank"><img src="crops/{u}" width="{c["w"]}" height="{c["h"]}" alt="" loading="lazy"></a></div>'
+                         f'<figcaption><b>{e(c["file"])}</b> <span class="pos">x {x0:.0f}–{x1:.0f}, y {y0:.0f}–{y1:.0f} mm</span><ul>{lis}</ul></figcaption></figure>')
         parts.append("</div>")
     parts.append("</body></html>")
     (review / "index.html").write_text("".join(parts), encoding="utf-8")
     return review / "index.html"
+
+
+def review_crops_at(pdf: Path, x_mm: float, y_mm: float) -> list[Path]:
+    """Review crops of this sheet (from <out>/review/meta.json) whose rect contains (x, y)."""
+    pdf = Path(pdf)
+    review = pdf.parent.parent / "review"
+    try:
+        meta = json.loads((review / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for m in meta:
+        if m.get("sheet") != pdf.stem:
+            continue
+        for c in m.get("crops", []):
+            x0, y0, x1, y1 = c["rect"]
+            if x0 <= x_mm <= x1 and y0 <= y_mm <= y1 and (review / "crops" / c["file"]).is_file():
+                out.append(review / "crops" / c["file"])
+    return out
+
+
+def crop_point(pdf: Path, x_mm: float, y_mm: float, out_png: Path | None = None,
+               w_mm: float = 80.0, h_mm: float = 50.0) -> Path:
+    """Render a w x h mm area of page 1 of `pdf` centred on (x, y) sheet mm (origin bottom
+    left, like the overlap report) at DPI. Default output: <out>/review/points/."""
+    pdf = Path(pdf)
+    if out_png is None:
+        out_png = pdf.parent.parent / "review" / "points" / f"{pdf.stem}_{x_mm:.0f}_{y_mm:.0f}.png"
+    out_png = Path(out_png)
+    with pymupdf.open(pdf) as doc:
+        page = doc[0]
+        W = page.rect.width * 25.4 / 72
+        H = page.rect.height * 25.4 / 72
+        x0, x1 = max(0.0, x_mm - w_mm / 2), min(W, x_mm + w_mm / 2)
+        y0, y1 = max(0.0, y_mm - h_mm / 2), min(H, y_mm + h_mm / 2)
+        if x1 <= x0 or y1 <= y0:
+            raise ValueError(f"point ({x_mm:g}, {y_mm:g}) mm is outside the sheet ({W:.0f} x {H:.0f} mm)")
+        clip = pymupdf.Rect(x0 * 72 / 25.4, (H - y1) * 72 / 25.4, x1 * 72 / 25.4, (H - y0) * 72 / 25.4)
+        pix = page.get_pixmap(dpi=DPI, clip=clip, alpha=False)
+        out_png.parent.mkdir(parents=True, exist_ok=True)
+        pix.save(out_png)
+    return out_png

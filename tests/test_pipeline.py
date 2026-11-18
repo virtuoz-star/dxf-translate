@@ -137,3 +137,51 @@ def test_xlsx_missing_columns(tmp_path):
         wb = openpyxl.Workbook(); wb.active["A1"] = v; wb.save(tmp_path / f"{n}.xlsx")
     with pytest.raises(GlossaryError, match="xlsx"):
         run_job([tmp_path])
+
+
+def test_output_name_collision_fails_whole_group(tmp_path):
+    (tmp_path / "old").mkdir(); (tmp_path / "new").mkdir()
+    make_sheet(tmp_path / "old" / "AS1.001.dxf")
+    make_sheet(tmp_path / "new" / "as1.001.DXF")           # same output name on Windows
+    make_sheet(tmp_path / "AS1.002.dxf")
+    r = run_job([tmp_path], review=False)
+    assert [s.src.name for s in r.sheets] == ["AS1.002.dxf"]
+    assert len(r.failed) == 2 and r.exit_code == 1
+    msgs = dict((m.split(" and ")[0], m) for _, m in r.failed)
+    assert all("output name collision" in m for m in msgs.values())
+    assert any("old/AS1.001.dxf" in m and "new/as1.001.DXF" in m for m in msgs.values())
+    assert sorted(p.name for p in (r.out_dir / "dxf").iterdir()) == ["AS1.002_EN.dxf"]
+
+
+def test_title_block_warning_reaches_job_and_exit_2(tmp_path):
+    make_sheet(tmp_path / "x.dxf", part_no="BK1.001")
+    r = run_job([tmp_path], review=False)
+    assert not r.missing and not r.overlaps and not r.failed
+    assert any(w.startswith("x.dxf: !! title block: Part No. not found") for w in r.warnings)
+    assert r.exit_code == 2
+    (tmp_path / "glossary.yaml").write_text('part_no_pattern: "^BK"\n', encoding="utf-8")
+    r = run_job([tmp_path], review=False)
+    assert r.sheets[0].part_no == "BK1.001" and r.exit_code == 0
+
+
+def test_review_only_this_runs_sheets(tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    out = tmp_path / "EN"
+    (out / "dxf").mkdir(parents=True)
+    make_sheet(out / "dxf" / "stale_EN.dxf")                 # old output without PDF
+    r = run_job([tmp_path / "a.dxf"], out_dir=out)
+    assert r.review is not None
+    import json
+    meta = json.loads((out / "review" / "meta.json").read_text(encoding="utf-8"))
+    assert [m["sheet"] for m in meta] == ["a_EN"]
+
+
+def test_check_overlaps_only_reports_skipped(tmp_path):
+    from dxf_translate.pipeline import check_overlaps_only
+    make_sheet(tmp_path / "a.dxf")
+    make_sheet(tmp_path / "b.dxf")
+    r = check_overlaps_only([tmp_path])
+    assert r.checked == 0 and sorted(r.skipped) == ["a.dxf", "b.dxf"] and r.exit_code == 1
+    run_job([tmp_path / "a.dxf"], out_dir=tmp_path / "EN", review=False)
+    r = check_overlaps_only([tmp_path])
+    assert r.checked == 1 and r.skipped == ["b.dxf"] and r.exit_code == 0

@@ -128,6 +128,7 @@ def test_ambiguous_excel_shows_error(qtbot, window, tmp_path, monkeypatch):
     monkeypatch.setattr(QMessageBox, "critical", lambda *a: calls.append(a))
     _run(qtbot, window, [tmp_path])
     assert calls and "ambiguous" in calls[0][2]
+    assert calls[0][2].startswith(texts.EXCEL_AMBIGUOUS)        # Ukrainian first, details after
     assert "Traceback" not in calls[0][2]
     assert window.choose_btn.isEnabled()
 
@@ -235,3 +236,15 @@ def test_selftest_flag_exits_zero_without_window(qapp, capsys):
     assert app.main(["dxf-translate", "--selftest"]) == 0
     assert "selftest OK" in capsys.readouterr().out
     assert not [w for w in QApplication.topLevelWidgets() if w.isVisible()]
+
+
+def test_failures_explained_in_ukrainian(qtbot, window, tmp_path):
+    from dxf_translate.pipeline import JobResult
+    tech = "PermissionError: [Errno 13] Permission denied: 'a_EN.pdf'"
+    res = JobResult(out_dir=tmp_path / "EN", order_dir=tmp_path, failed=[("a.dxf", tech)],
+                    warnings=["review failed: RuntimeError: x"])
+    window.show_result(res)
+    item = window.failures_list.item(0)
+    assert item.text() == f"a.dxf: {texts.FILE_IN_USE}" and item.toolTip() == tech
+    log = window.log.toPlainText()
+    assert tech in log and texts.REVIEW_FAILED in log

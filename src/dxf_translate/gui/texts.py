@@ -38,3 +38,39 @@ ERROR_TITLE = "Помилка"
 INFO_TITLE = "Інформація"
 NO_DXF = "Не знайдено жодного файлу DXF."
 NOTHING_TO_SAVE = "Введіть переклад англійською хоча б в одну клітинку стовпця «English»."
+
+# per-file failures / errors: technical text stays in the log, the user sees this
+FILE_IN_USE = ("Файл відкритий в іншій програмі (наприклад, PDF в Acrobat) — "
+               "закрийте його та перезапустіть")
+EXCEL_AMBIGUOUS = ("Знайдено кілька файлів Excel: потрібен рівно один український та один "
+                   "англійський виробничий список. Залиште лише їх і перезапустіть")
+EXCEL_UNREADABLE = "Не вдалося прочитати файл Excel — перевірте, що він не пошкоджений і не відкритий"
+NAME_COLLISION = ("Кілька креслень з однаковою назвою в різних папках — результати перезаписали б "
+                  "одне одного. Перейменуйте одне з них або перекладіть папки окремо")
+UNSUPPORTED_SHEET = "Непідтримуваний формат аркуша (підтримуються лише A3 та A4)"
+BROKEN_DXF = "Файл DXF пошкоджений або не є кресленням SolidWorks"
+REVIEW_FAILED = "Не вдалося створити сторінку перевірки (переклад виконано)"
+TITLE_BLOCK = "Не знайдено дані в основному написі (Part No. / назва / матеріал) — перевірте креслення"
+GLOSSARY_BAD = "Помилка у файлі glossary.yaml"
+DETAILS = "Подробиці: {msg}"
+
+_EXPLAIN = (
+    (("PermissionError", "Permission denied", "WinError 32", "being used by another process"),
+     FILE_IN_USE),
+    (("ambiguous Excel",), EXCEL_AMBIGUOUS),
+    (("cannot read Excel",), EXCEL_UNREADABLE),
+    (("output name collision",), NAME_COLLISION),
+    (("Unsupported sheet size", "UnsupportedSheet"), UNSUPPORTED_SHEET),
+    (("DXFStructureError", "DXFError", "Not a DXF file"), BROKEN_DXF),
+    (("review failed",), REVIEW_FAILED),
+    (("!! title block:",), TITLE_BLOCK),
+    (("glossary.yaml",), GLOSSARY_BAD),
+)
+
+
+def explain(msg: str) -> str | None:
+    """Ukrainian explanation of a known technical failure message, else None."""
+    for needles, text in _EXPLAIN:
+        if any(n in msg for n in needles):
+            return text
+    return None

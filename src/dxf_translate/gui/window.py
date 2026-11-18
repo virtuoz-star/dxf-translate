@@ -230,7 +230,9 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self.log.appendPlainText(texts.LOG_ERROR.format(msg=msg))
         self._refresh_controls()
-        QMessageBox.critical(self, texts.ERROR_TITLE, msg)
+        hint = texts.explain(msg)
+        shown = f"{hint}\n\n{texts.DETAILS.format(msg=msg)}" if hint else msg
+        QMessageBox.critical(self, texts.ERROR_TITLE, shown)
         self.job_done.emit()
 
     def closeEvent(self, ev) -> None:
@@ -246,7 +248,8 @@ class MainWindow(QMainWindow):
 
         self.failures_list.clear()
         for name, msg in res.failed:
-            self.failures_list.addItem(f"{name}: {msg}")
+            self.failures_list.addItem(f"{name}: {texts.explain(msg) or msg}")
+            self.failures_list.item(self.failures_list.count() - 1).setToolTip(msg)
         self.failures_box.setVisible(bool(res.failed))
 
         self.overlaps_list.clear()
@@ -281,9 +284,14 @@ class MainWindow(QMainWindow):
         for s in res.sheets:
             for line in s.report:
                 self.log.appendPlainText(line)
+        for name, msg in res.failed:                 # technical text stays in the log
+            self.log.appendPlainText(f"{name}: {msg}")
         for w in res.warnings:
             if w != "no_excel":
                 self.log.appendPlainText(w)
+                hint = texts.explain(w)
+                if hint:
+                    self.log.appendPlainText(f"   → {hint}")
         self.log.appendPlainText(texts.LOG_DONE.format(out=res.out_dir))
         self._refresh_controls()
 
