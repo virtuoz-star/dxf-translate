@@ -44,7 +44,7 @@ def pick_pair(paths: list[Path]) -> tuple[Path, Path] | None:
     return ua[0], en[0]
 
 
-def add_excel_pairs(g: Glossary, ua: Path, en: Path) -> int:
+def add_excel_pairs(g: Glossary, ua: Path, en: Path, *, warnings: list[str] | None = None) -> int:
     """Pair cells of the UA and EN production lists (same layout) into glossary entries."""
     ws_ua = openpyxl.load_workbook(ua, data_only=True).active
     ws_en = openpyxl.load_workbook(en, data_only=True).active
@@ -62,7 +62,11 @@ def add_excel_pairs(g: Glossary, ua: Path, en: Path) -> int:
                 continue
             u, e = u.strip(), e.strip()
             if CYR.search(e):
-                print(f"   !! Excel: not translated yet: {u!r}")
+                msg = f"!! Excel: not translated yet: {u!r}"
+                if warnings is None:
+                    print(f"   {msg}")
+                else:
+                    warnings.append(msg)
                 continue
             if i == mat_col and u != MATERIAL_COL:
                 g.full_material[u] = e

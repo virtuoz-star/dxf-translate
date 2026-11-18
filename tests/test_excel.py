@@ -48,3 +48,15 @@ def test_excel_pairs(tmp_path):
     assert g.full_material["Лист 3 алюм."] == "Sheet 3 Al-EN"
     assert g.bom_material["Лист 3 алюм."] == "Sheet 3 Al-EN"
     assert g.parts["AS1.001"] == ("Beam-EN", "Sheet 3 Al-EN")
+
+
+def test_add_excel_pairs_warnings_collected(tmp_path, capsys):
+    import openpyxl
+    from dxf_translate.excel import add_excel_pairs
+    from dxf_translate.glossary import load_base
+    for n, v in (("ua", "Балка"), ("en", "Балка")):   # EN left untranslated
+        wb = openpyxl.Workbook(); wb.active["A1"] = v; wb.save(tmp_path / f"{n}.xlsx")
+    w: list[str] = []
+    add_excel_pairs(load_base(), tmp_path / "ua.xlsx", tmp_path / "en.xlsx", warnings=w)
+    assert len(w) == 1 and "Балка" in w[0]
+    assert capsys.readouterr().out == ""

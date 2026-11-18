@@ -83,6 +83,11 @@ def _parse(path: Path) -> Glossary:
         kw["substr"] = [(str(a), str(b)) for a, b in sub]
     except (TypeError, ValueError) as e:
         raise GlossaryError(f"{path}: 'substr' must be a list of [regex, replacement]") from e
+    for pat, _ in kw["substr"]:
+        try:
+            re.compile(pat)
+        except re.error as e:
+            raise GlossaryError(f"{path}: bad regex in 'substr': {pat!r}: {e}") from e
     kw["assembly_suffix"] = str(data.get("assembly_suffix") or "")
     return Glossary(**kw)
 
@@ -110,7 +115,14 @@ def save_terms(path: Path, terms: dict[str, dict[str, str]]) -> None:
     path = Path(path)
     data: dict = {}
     if path.exists():
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as e:
+            raise GlossaryError(f"{path}: invalid YAML: {e}") from e
+        except OSError as e:
+            raise GlossaryError(f"{path}: cannot read: {e}") from e
+        if not isinstance(data, dict):
+            raise GlossaryError(f"{path}: top level must be a mapping")
     for section, entries in terms.items():
         if section not in TABLES:
             raise GlossaryError(f"{path}: cannot save to section '{section}'")

@@ -78,3 +78,24 @@ def test_save_terms_creates_file(tmp_path):
     p = tmp_path / "new.yaml"
     save_terms(p, {"phrases": {"а": "a"}})
     assert load_file(p).phrases == {"а": "a"}
+
+
+def test_save_terms_malformed_existing(tmp_path):
+    f = tmp_path / "glossary.yaml"
+    f.write_text("phrases: [unclosed\n", encoding="utf-8")
+    with pytest.raises(GlossaryError, match="glossary.yaml"):
+        save_terms(f, {"phrases": {"a": "b"}})
+
+
+def test_save_terms_not_mapping(tmp_path):
+    f = tmp_path / "glossary.yaml"
+    f.write_text("- a\n- b\n", encoding="utf-8")
+    with pytest.raises(GlossaryError, match="glossary.yaml"):
+        save_terms(f, {"phrases": {"a": "b"}})
+
+
+def test_bad_regex_rejected(tmp_path):
+    f = tmp_path / "glossary.yaml"
+    f.write_text('substr:\n  - ["(unclosed", "x"]\n', encoding="utf-8")
+    with pytest.raises(GlossaryError, match="glossary.yaml"):
+        load_file(f)
