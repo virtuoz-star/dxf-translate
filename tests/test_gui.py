@@ -120,7 +120,7 @@ def test_overlaps_hint(qtbot, window, tmp_path):
     assert window.counts_label.text() == texts.COUNTS.format(ok=0, failed=1, overlaps=1)
 
 
-def test_ambiguous_excel_shows_error(qtbot, window, tmp_path, monkeypatch):
+def test_xlsx_in_folder_ignored(qtbot, window, tmp_path, monkeypatch):
     import openpyxl
     make_sheet(tmp_path / "a.dxf")
     for name, text in (("one.xlsx", "Балка"), ("two.xlsx", "Деталь")):
@@ -128,9 +128,7 @@ def test_ambiguous_excel_shows_error(qtbot, window, tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(QMessageBox, "critical", lambda *a: calls.append(a))
     _run(qtbot, window, [tmp_path])
-    assert calls and "ambiguous" in calls[0][2]
-    assert calls[0][2].startswith(texts.EXCEL_AMBIGUOUS)        # Ukrainian first, details after
-    assert "Traceback" not in calls[0][2]
+    assert not calls and window.excel_warning.isVisibleTo(window)
     assert window.choose_btn.isEnabled()
 
 

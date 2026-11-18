@@ -1,4 +1,4 @@
-"""Command line: dxf-translate PATH... [--out DIR] [--no-review] [--overlaps-only]
+"""Command line: dxf-translate PATH... [--translations FILE] [--out DIR] [--no-review] [--overlaps-only]
 or dxf-translate --crop PDF X Y (render the area around a reported point of a sheet)."""
 from __future__ import annotations
 
@@ -9,18 +9,20 @@ from pathlib import Path
 from dxf_translate.glossary import GlossaryError
 from dxf_translate.pipeline import JobResult, check_overlaps_only, run_job
 
-_WARN = {"no_excel": "!! no Excel production lists found: glossary comes from files only"}
+_WARN = {"no_excel": "!! no translation file given (--translations): glossary comes from files only"}
 
 
 def _print(res: JobResult) -> None:
-    if res.excel:
-        print(f"Excel glossary: {res.excel_pairs} UA->EN pairs from {res.excel[1].name}")
+    if res.translations:
+        print(f"Translation file: {res.translations.pairs} UA->EN pairs from {res.translations.path.name}")
     for s in res.sheets:
         for line in s.report:
             print(line)
     _print_failed(res)
     for w in res.warnings:
         print(_WARN.get(w, w))
+    for ua, col, pn in res.translations.missing if res.translations else ():
+        print(f"!! TRANSLATION FILE: fill {col} for {pn}: {ua}")
     print_overlaps(res)
 
 
@@ -60,7 +62,10 @@ def _crop(pdf: Path, x: float, y: float) -> int:
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="dxf-translate", description="Translate SolidWorks DXF drawings UA -> EN")
-    ap.add_argument("paths", nargs="*", type=Path, help="DXF/XLSX files or folders")
+    ap.add_argument("paths", nargs="*", type=Path, help="DXF files or folders")
+    ap.add_argument("--translations", type=Path, metavar="FILE",
+                    help="the order's translation file (.xlsx with Позначення, Назва, Name, "
+                         "Матеріал, Material columns)")
     ap.add_argument("--out", type=Path, help="output folder (default: <input folder>/EN)")
     ap.add_argument("--no-review", action="store_true", help="skip the HTML review page")
     ap.add_argument("--overlaps-only", action="store_true", help="only check existing output")
@@ -87,7 +92,7 @@ def main(argv: list[str] | None = None) -> None:
         if a.overlaps_only:
             res = _overlaps_only(a.paths, a.out)
         else:
-            res = run_job(a.paths, a.out, review=not a.no_review)
+            res = run_job(a.paths, a.out, review=not a.no_review, translations=a.translations)
             _print(res)
             if res.review:
                 print(f"Review: {res.review}")

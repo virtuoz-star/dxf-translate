@@ -61,9 +61,11 @@ with a `gui` extra — the contract below is what matters.)
 Input: a list of paths (files and/or folders) and optional output dir.
 
 1. Collect `*.dxf` (case-insensitive) from given paths (folders are scanned recursively; sub-folders named `EN`, `*_EN.dxf` and `~$*` files are skipped).
-2. Collect `*.xlsx`; classify as UA if its cells contain Cyrillic, EN otherwise.
-   Exactly one UA + one EN → used as translation source. None → warning
-   "Excel not found", continue with glossary only. Ambiguous → error with message.
+2. *Superseded by `docs/spec-translation-file.md`:* the translation source is one explicitly
+   given translation file (`--translations`); `.xlsx` inside dropped folders are ignored.
+   None → warning `no_excel`, continue with glossary only. ~~Collect `*.xlsx`; classify as UA if
+   its cells contain Cyrillic, EN otherwise. Exactly one UA + one EN → used as translation
+   source. Ambiguous → error with message.~~
 3. Glossary = base `glossary.yaml` merged with optional `glossary.yaml` in the
    order folder (order entries win).
 4. Translate every DXF → `<out>/dxf/*_EN.dxf` and `<out>/pdf/*.pdf`, where default `<out>` = `<first dropped folder>/EN` (or `<folder of first DXF>/EN` if only files were given)

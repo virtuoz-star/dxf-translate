@@ -1,77 +1,94 @@
-"""Excel production lists: UA/EN pairing and glossary extraction."""
+"""The order's translation file: one Excel production list with UA and EN columns side by side."""
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 import openpyxl
 
 from dxf_translate.glossary import Glossary, GlossaryError
 
 CYR = re.compile(r"[А-Яа-яІіЇїЄєҐґ]")
-MATERIAL_COL = "Матеріал"
+REQUIRED = ("Позначення", "Назва", "Name", "Матеріал", "Material")
+# UA column -> EN column read from the same row
+_PAIRS = (("Назва", "Name"), ("Матеріал", "Material"))
 
 
-def _strings(path: Path):
-    ws = openpyxl.load_workbook(path, data_only=True).active
-    for row in ws.iter_rows(values_only=True):
-        for c in row:
-            if isinstance(c, str) and c.strip():
-                yield c
+@dataclass
+class TranslationFile:
+    path: Path
+    header_row: int                                   # 1-based
+    cols: dict[str, int]                              # header text -> 1-based column
+    pairs: int = 0                                    # glossary entries added
+    missing: list[tuple[str, str, str]] = field(default_factory=list)  # (ua_text, "Name"|"Material", part_no)
 
 
-def classify(path: Path) -> Literal["ua", "en"]:
-    cells = list(_strings(path))
-    if not cells:
-        return "en"
-    cyr = sum(1 for c in cells if CYR.search(c))
-    return "ua" if cyr / len(cells) > 0.2 else "en"
+def _text(v) -> str:
+    return v.strip() if isinstance(v, str) else ""
 
 
-def pick_pair(paths: list[Path]) -> tuple[Path, Path] | None:
-    xlsx = [Path(p) for p in paths if Path(p).suffix.lower() == ".xlsx"]
-    if not xlsx:
-        return None
-    ua = [p for p in xlsx if classify(p) == "ua"]
-    en = [p for p in xlsx if classify(p) == "en"]
-    if len(ua) != 1 or len(en) != 1:
-        raise GlossaryError(
-            f"ambiguous Excel: need exactly one UA and one EN file, "
-            f"found {len(ua)} UA ({', '.join(p.name for p in ua)}) "
-            f"and {len(en)} EN ({', '.join(p.name for p in en)})"
-        )
-    return ua[0], en[0]
+def _header_cols(row) -> dict[str, int]:
+    cols: dict[str, int] = {}
+    for c in row:
+        t = _text(c.value)
+        if t:
+            cols.setdefault(t, c.column)
+    return cols
 
 
-def add_excel_pairs(g: Glossary, ua: Path, en: Path, *, warnings: list[str] | None = None) -> int:
-    """Pair cells of the UA and EN production lists (same layout) into glossary entries."""
-    ws_ua = openpyxl.load_workbook(ua, data_only=True).active
-    ws_en = openpyxl.load_workbook(en, data_only=True).active
-    mat_col = pn_col = name_col = None
-    n = 0
-    for r_ua, r_en in zip(ws_ua.iter_rows(values_only=True), ws_en.iter_rows(values_only=True)):
-        if MATERIAL_COL in r_ua:
-            mat_col = r_ua.index(MATERIAL_COL)
-            pn_col, name_col = r_ua.index("Позначення"), r_ua.index("Назва")
-        elif pn_col is not None and isinstance(r_en[pn_col], str) and g.is_part_no(r_en[pn_col]):
-            mat = r_en[mat_col] if mat_col < len(r_en) else None
-            g.parts[r_en[pn_col].strip()] = (r_en[name_col], mat)
-        for i, (u, e) in enumerate(zip(r_ua, r_en)):
-            if not (isinstance(u, str) and isinstance(e, str) and CYR.search(u)):
+def read_translations(g: Glossary, path: Path) -> TranslationFile:
+    """Add the file's UA->EN names and materials (and Part No. -> (Name, Material)) to `g`.
+
+    Header row = first row of the first sheet holding all REQUIRED headers. Data rows are rows
+    whose `Позначення` matches the glossary's Part No. pattern. A UA name/material whose EN cell
+    is empty or still Cyrillic is reported in `missing` and not added."""
+    path = Path(path)
+    try:
+        ws = openpyxl.load_workbook(path, data_only=True).worksheets[0]
+        rows = list(ws.iter_rows())
+    except Exception as exc:
+        raise GlossaryError(f"{path}: cannot read translation file: {type(exc).__name__}: {exc}") from exc
+
+    header_row, cols, best, start = 0, {}, set(), 0
+    for i, row in enumerate(rows):
+        found = _header_cols(row)
+        have = {h for h in REQUIRED if h in found}
+        if len(have) == len(REQUIRED):
+            header_row, cols, start = row[0].row, found, i + 1
+            break
+        if len(have) > len(best):
+            best = have
+    if not header_row:
+        need = ", ".join(h for h in REQUIRED if h not in best)
+        raise GlossaryError(f"{path}: not a translation file: missing column header(s) {need} "
+                            f"(need {', '.join(REQUIRED)} in one row)")
+
+    tf = TranslationFile(path, header_row, cols)
+    for row in rows[start:]:
+        cell = {c.column: c.value for c in row}
+        pn = _text(cell.get(cols["Позначення"]))
+        if not pn or not g.is_part_no(pn):
+            continue
+        en_vals: dict[str, str | None] = {}
+        found: list[tuple[int, str, str]] = []
+        for ua_col, en_col in _PAIRS:
+            ua, en = _text(cell.get(cols[ua_col])), _text(cell.get(cols[en_col]))
+            ok = bool(en) and not CYR.search(en)
+            en_vals[en_col] = en if ok else None
+            if not ua:
                 continue
-            u, e = u.strip(), e.strip()
-            if CYR.search(e):
-                msg = f"!! Excel: not translated yet: {u!r}"
-                if warnings is None:
-                    print(f"   {msg}")
-                else:
-                    warnings.append(msg)
+            if not ok:
+                found.append((cols[en_col], ua, en_col))
                 continue
-            if i == mat_col and u != MATERIAL_COL:
-                g.full_material[u] = e
-                g.bom_material[u] = e
+            if not CYR.search(ua):
+                continue
+            if en_col == "Material":
+                g.full_material[ua] = en
+                g.bom_material[ua] = en
             else:
-                g.phrases[u] = e
-            n += 1
-    return n
+                g.phrases[ua] = en
+            tf.pairs += 1
+        tf.missing += [(ua, col, pn) for _, ua, col in sorted(found)]
+        g.parts[pn] = (en_vals["Name"], en_vals["Material"])
+    return tf

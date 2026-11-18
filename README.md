@@ -78,7 +78,7 @@ Windows: download `dxf-translate-<version>.exe` from
 [GitHub Releases](https://github.com/virtuoz-star/dxf-translate/releases) — a single file, no
 install. The exe is not code-signed, so on first launch Windows SmartScreen shows
 "Windows protected your PC": click **More info → Run anyway**. Drop a folder with DXF drawings
-(and optionally the UA/EN Excel lists) onto the window; results go to `EN` next to them.
+onto the window; results go to `EN` next to them.
 The exe is a PyInstaller one-file build that unpacks itself on every start, so the first
 start (especially right after download / an antivirus scan) can take 10–30 s.
 "Save and re-run" writes the entered translations to `glossary.yaml` in the order root (the
@@ -93,12 +93,19 @@ Build the exe: `uv run pyinstaller packaging/dxf-translate.spec` → `dist/dxf-t
 ## CLI
 
     uv sync
-    uv run dxf-translate PATH... [--out DIR] [--no-review] [--overlaps-only]
+    uv run dxf-translate PATH... [--translations FILE.xlsx] [--out DIR] [--no-review] [--overlaps-only]
 
-* `PATH` — DXF/XLSX files or folders; folders are scanned recursively (skips `EN/`, `*_EN.dxf`, `~$*`).
+* `PATH` — DXF files or folders; folders are scanned recursively (skips `EN/`, `*_EN.dxf`, `~$*`;
+  `.xlsx` files in them are ignored).
 * Output: `<first folder>/EN` (or `<folder of first DXF>/EN`) unless `--out` is given:
   `dxf/*_EN.dxf`, `pdf/*.pdf`, `review/index.html`, `review/crops/*.png`.
-* Excel: one UA + one EN production list among the inputs adds UA→EN pairs; none → warning.
+* `--translations FILE.xlsx` — the order's translation file: one production list whose first sheet
+  has a row with the headers `Позначення`, `Назва`, `Name`, `Матеріал`, `Material` (any order,
+  other columns allowed). Each row whose `Позначення` matches `part_no_pattern` adds
+  `Назва`→`Name` and `Матеріал`→`Material` to the glossary; an empty / still-Cyrillic EN cell is
+  reported as `!! TRANSLATION FILE: fill Name for AS…: …` (exit 2). Without it → warning, glossary
+  only. The old UA + EN pair is not supported; convert it once with
+  `uv run python scripts/convert_pair.py UA.xlsx EN.xlsx OUT.xlsx`.
 * Glossary: bundled base `src/dxf_translate/data/glossary.yaml`, overridden by `glossary.yaml`
   in the order folder (sections `phrases`, `full_material`, `bom_material`, `notes`, `substr`,
   `assembly_suffix`, `part_no_pattern` — regex a Part No. must match, base `"^AS"`).
@@ -111,7 +118,7 @@ Build the exe: `uv run pyinstaller packaging/dxf-translate.spec` → `dist/dxf-t
 * Output lines: `!! NO TRANSLATION: …`, `file: !! title block: … not found` (a framed sheet
   whose Part No. / name / material could not be read), `file: 'text' at (x, y) mm crosses n
   line(s)`, `TOTAL new overlaps: N`.
-* Exit code: `0` ok, `1` a file failed or bad glossary/Excel, `2` missing translations,
+* Exit code: `0` ok, `1` a file failed or bad glossary/translation file, `2` missing translations,
   title-block warnings or overlaps.
 
 ## Development

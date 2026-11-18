@@ -6,8 +6,9 @@ from dxf_translate.glossary import GlossaryError, Glossary, load, load_base, loa
 
 def test_base_sizes_frozen():
     # sizes recorded from the prototype glossary before it was removed
+    # (+4 production-list phrases: Деталі, Зварювальні роботи, Контрольні збірки, СК)
     g = load_base()
-    assert (len(g.phrases), len(g.notes), len(g.substr)) == (39, 7, 12)
+    assert (len(g.phrases), len(g.notes), len(g.substr)) == (43, 7, 12)
 
 
 def test_order_file_wins(tmp_path):

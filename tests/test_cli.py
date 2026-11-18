@@ -25,11 +25,11 @@ def test_cli_exit_codes(tmp_path):
     import openpyxl
     amb = tmp_path / "amb"; amb.mkdir()
     make_sheet(amb / "a.dxf")
-    for n, v in (("1", "Балка"), ("2", "Деталь")):
+    for n, v in (("1", "Балка"), ("2", "Деталь")):      # xlsx in the folder are ignored
         wb = openpyxl.Workbook(); wb.active["A1"] = v; wb.save(amb / f"{n}.xlsx")
-    p = run(amb)
-    assert p.returncode == 1
-    assert "ambiguous" in p.stderr
+    p = run(amb, "--no-review")
+    assert p.returncode == 0, p.stderr
+    assert "no translation file given" in p.stdout
 
 
 def test_overlaps_only(tmp_path):

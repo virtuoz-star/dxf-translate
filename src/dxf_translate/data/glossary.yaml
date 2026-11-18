@@ -20,6 +20,11 @@ phrases:
   Кільк.: Qty
   Матеріал: Material
   Довжина: Length
+  # production list (translation file): section rows and the Ф column
+  Деталі: Parts
+  Зварювальні роботи: Welded assemblies
+  Контрольні збірки: Test assemblies
+  СК: AD
   # leader notes (SolidWorks splits them into lines)
   Площини прилягання до: Surfaces mating with
   інших деталей -: other parts -

@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dxf_translate import glossary as glossary_mod
-from dxf_translate.glossary import GlossaryError
-from dxf_translate.excel import add_excel_pairs, pick_pair
+from dxf_translate.excel import TranslationFile, read_translations
 from dxf_translate.overlaps import Overlap, find_overlaps
 from dxf_translate.review import build_review
 from dxf_translate.translate import SheetResult, translate_file
@@ -24,6 +23,7 @@ class MissingText:
     text: str
     kind: str
     files: list[str]
+    hint: str = ""                 # kind "excel": "<column> · <part_no>"
 
 
 @dataclass
@@ -35,8 +35,7 @@ class JobResult:
     missing: list[MissingText] = field(default_factory=list)
     overlaps: list[Overlap] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    excel: tuple[Path, Path] | None = None
-    excel_pairs: int = 0
+    translations: TranslationFile | None = None
     order_dir: Path | None = None            # where the order glossary.yaml lives
     checked: int = 0                         # sheets the overlap check ran on
     skipped: list[str] = field(default_factory=list)   # --overlaps-only: no output to check
@@ -49,9 +48,9 @@ class JobResult:
         return 2 if attention else 0
 
 
-def collect_inputs(paths: list[Path]) -> tuple[list[Path], list[Path]]:
-    """Split inputs into (dxfs, xlsxs). Folders are scanned recursively, skipping
-    sub-folders named EN (relative to the dropped folder), *_EN.dxf and ~$ files."""
+def collect_inputs(paths: list[Path]) -> list[Path]:
+    """DXF inputs. Folders are scanned recursively, skipping sub-folders named EN
+    (relative to the dropped folder), *_EN.dxf and ~$ files. Other files are ignored."""
     found: dict[Path, Path] = {}
     for raw in map(Path, paths):
         if raw.is_dir():
@@ -61,15 +60,10 @@ def collect_inputs(paths: list[Path]) -> tuple[list[Path], list[Path]]:
         for p in cands:
             if not p.is_file() or p.name.startswith("~$"):
                 continue
-            ext = p.suffix.lower()
-            if ext not in (".dxf", ".xlsx"):
-                continue
-            if ext == ".dxf" and p.stem.endswith("_EN"):
+            if p.suffix.lower() != ".dxf" or p.stem.endswith("_EN"):
                 continue
             found.setdefault(p.resolve(), p)
-    dxfs = sorted((p for p in found.values() if p.suffix.lower() == ".dxf"), key=lambda p: p.name)
-    xlsx = sorted((p for p in found.values() if p.suffix.lower() == ".xlsx"), key=lambda p: p.name)
-    return dxfs, xlsx
+    return sorted(found.values(), key=lambda p: p.name)
 
 
 def default_out(paths: list[Path], dxfs: list[Path]) -> Path:
@@ -105,31 +99,19 @@ def output_collisions(dxfs: list[Path], base: Path | None = None) -> dict[Path, 
 
 
 def run_job(paths: list[Path], out_dir: Path | None = None,
-            progress: ProgressFn | None = None, review: bool = True) -> JobResult:
-    dxfs, xlsx = collect_inputs(paths)
+            progress: ProgressFn | None = None, review: bool = True,
+            translations: Path | None = None) -> JobResult:
+    dxfs = collect_inputs(paths)
     if not dxfs:
         raise NoInputsError("no DXF files")
-    try:
-        pair = pick_pair(xlsx)                   # GlossaryError propagates before any work
-    except GlossaryError:
-        raise
-    except Exception as exc:
-        raise GlossaryError(f"cannot read Excel file(s) {', '.join(p.name for p in xlsx)}: "
-                            f"{type(exc).__name__}: {exc}") from exc
     order_dir = default_out(paths, dxfs).parent
     g = glossary_mod.load(order_dir)
     out = Path(out_dir) if out_dir else order_dir / "EN"
-    res = JobResult(out_dir=out, excel=pair, order_dir=order_dir)
-    if pair is None:
+    res = JobResult(out_dir=out, order_dir=order_dir)
+    if translations is None:
         res.warnings.append("no_excel")
-    else:
-        try:
-            res.excel_pairs = add_excel_pairs(g, *pair, warnings=res.warnings)
-        except GlossaryError:
-            raise
-        except Exception as exc:
-            raise GlossaryError(
-                f"cannot read Excel {pair[0].name} / {pair[1].name}: {type(exc).__name__}: {exc}") from exc
+    else:                                        # GlossaryError propagates before any work
+        res.translations = read_translations(g, Path(translations))
 
     collide = output_collisions(dxfs, order_dir)
     miss: dict[tuple[str, str], MissingText] = {}
@@ -155,6 +137,9 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
         if progress:
             progress(i, len(dxfs), src.name)
     res.missing = [miss[k] for k in sorted(miss)]
+    if res.translations:
+        res.missing += [MissingText(ua, "excel", [], f"{col} · {pn}")
+                        for ua, col, pn in res.translations.missing]
     _check_overlaps(res, [(s.dxf, s.src) for s in res.sheets])
     if review and res.sheets:
         try:
@@ -176,7 +161,7 @@ def _check_overlaps(res: JobResult, pairs: list[tuple[Path, Path]]) -> None:
 
 def check_overlaps_only(paths: list[Path], out_dir: Path | None = None) -> JobResult:
     """Skip translation: check existing <out>/dxf/*_EN.dxf against their inputs."""
-    dxfs, _ = collect_inputs(paths)
+    dxfs = collect_inputs(paths)
     if not dxfs:
         raise NoInputsError("no DXF files")
     out = Path(out_dir) if out_dir else default_out(paths, dxfs)

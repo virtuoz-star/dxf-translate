@@ -8,7 +8,7 @@ description: Translates Ukrainian SolidWorks DXF drawings (sheets, BOM, technica
 The CLI lives in this plugin. Run it with:
 
 ```bash
-uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate "<ABS_PATH>" [more paths] [--out DIR] [--no-review] [--overlaps-only]
+uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate "<ABS_PATH>" [more paths] [--translations "<ABS_PATH>.xlsx"] [--out DIR] [--no-review] [--overlaps-only]
 uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate --crop "<out>/pdf/<sheet>_EN.pdf" X Y
 ```
 
@@ -16,9 +16,10 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate --crop "<out>/pdf/<sheet>
 - **Shell:** run commands with the Bash tool (Git Bash on Windows). Always double-quote paths (Cyrillic, spaces) and prefer forward slashes: `"C:/Замовлення/AS029"` (quoted backslashes also work). If the shell is PowerShell, write the literal plugin root path instead of the variable.
 - `uv` must be installed (`uv --version`). If missing, tell the user to install it (https://docs.astral.sh/uv/) and stop.
 - `--project` does not change the working directory: always pass **absolute** input paths.
-- A folder is scanned recursively (skips `EN/`, `*_EN.dxf`, `~$*`). Output goes to `<folder>/EN` (`dxf/`, `pdf/`, `review/`).
+- A folder is scanned recursively for DXF (skips `EN/`, `*_EN.dxf`, `~$*`; `.xlsx` files in it are ignored). Output goes to `<folder>/EN` (`dxf/`, `pdf/`, `review/`).
+- **Translation file** (`--translations FILE.xlsx`): one production list with the headers `Позначення`, `Назва`, `Name`, `Матеріал`, `Material` in one row (first sheet; order free, other columns allowed). Pass it when the user names it, or when exactly one `.xlsx` with those headers sits in the order folder; if unsure (none, several, or an old UA + EN pair), ask the user. Without it the run uses the glossary only and prints `!! no translation file given`. An old UA + EN pair is not supported (a file missing the headers → exit 1 naming them).
 - Order glossary = `<folder>/glossary.yaml` (sections `phrases`, `full_material`, `bom_material`, `notes`, `substr`, `assembly_suffix`, and `part_no_pattern` — regex a Part No. must match, base `"^AS"`). Order entries override the base glossary. The desktop app's "Save and re-run" rewrites this file and drops its YAML comments.
-- Exit codes: `0` ok, `1` a file failed or bad glossary/Excel (message on stderr), `2` missing translations, overlaps or `!! title block:` warnings.
+- Exit codes: `0` ok, `1` a file failed or bad glossary/translation file (message on stderr), `2` missing translations, overlaps or `!! title block:` warnings.
 
 ## Workflow
 
@@ -26,8 +27,9 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" dxf-translate --crop "<out>/pdf/<sheet>
 2. **Exit 1:** show the `!! FAILED` / `error:` lines. Fix a broken `glossary.yaml` yourself (the message names file and line); otherwise report to the user. Continue with the sheets that did translate. `output name collision` = two inputs in different sub-folders with the same file name (case-insensitive): none of them is translated; ask the user which to rename or translate the sub-folders separately.
 3. **Exit 2 with `!! NO TRANSLATION: a | b`:**
    - Propose an English term for each missing text, following the layout rules below. Show the list to the user and **wait for their OK or corrections** before writing anything.
-   - Then write the approved terms to `<folder>/glossary.yaml` by editing the YAML: whole labels/names/BOM cells → `phrases`; technical-requirement lines → `notes`; materials → `full_material` + `bom_material` (identical to the Excel string). Create the file if absent. Quote keys that start with `*`, contain `: ` or `#`.
+   - Then write the approved terms to `<folder>/glossary.yaml` by editing the YAML: whole labels/names/BOM cells → `phrases`; technical-requirement lines → `notes`; materials → `full_material` + `bom_material` (identical to the translation file string). Create the file if absent. Quote keys that start with `*`, contain `: ` or `#`.
    - Rerun step 1. Repeat until no `!! NO TRANSLATION` remains.
+   - `!! TRANSLATION FILE: fill <Name|Material> for <Part No.>: <UA text>` = that row of the translation file has an empty or still-Cyrillic EN cell. The program never writes the translation file: tell the user which cells to fill (you may propose the English text), or, if they ask, put the term in the order glossary instead.
    - Touch the base glossary (`<plugin root>/src/dxf_translate/data/glossary.yaml`) only on the user's explicit request, and then via a branch + PR in a clone of the `dxf-translate` repository — never edit the installed copy.
 3b. **Exit 2 with `<file>: !! title block: …` lines:** the GOST title block was removed but Part No. / name / material was not found, so the EN info block lacks it. Part No. not found + `dropped '…'` → the order uses another prefix: propose `part_no_pattern` (e.g. `"^(AS|BK)"`) for the order glossary (ask first, as in step 3). Material not found → its UA string is missing from `full_material` + `bom_material`. Otherwise report the sheet to the user.
 4. **Overlaps (`TOTAL new overlaps: N`, N > 0):**
