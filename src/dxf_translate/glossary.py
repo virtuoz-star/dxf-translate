@@ -126,7 +126,12 @@ def save_terms(path: Path, terms: dict[str, dict[str, str]]) -> None:
     for section, entries in terms.items():
         if section not in TABLES:
             raise GlossaryError(f"{path}: cannot save to section '{section}'")
-        data.setdefault(section, {}).update(entries)
+        current = data.get(section)
+        if current is None:                   # `phrases:` with nothing under it
+            current = data[section] = {}
+        elif not isinstance(current, dict):
+            raise GlossaryError(f"{path}: section '{section}' must be a mapping")
+        current.update(entries)
     path.write_text(
         yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=10000),
         encoding="utf-8",

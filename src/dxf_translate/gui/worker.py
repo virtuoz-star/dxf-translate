@@ -7,7 +7,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from dxf_translate.glossary import GlossaryError
 from dxf_translate.gui import texts
-from dxf_translate.pipeline import run_job
+from dxf_translate.pipeline import NoInputsError, run_job
 
 
 class JobWorker(QObject):
@@ -25,8 +25,10 @@ class JobWorker(QObject):
             res = run_job(self.paths, progress=lambda d, t, n: self.progress.emit(d, t, n))
         except GlossaryError as exc:
             self.error.emit(str(exc))
+        except NoInputsError:
+            self.error.emit(texts.NO_DXF)
         except ValueError as exc:
-            self.error.emit(texts.NO_DXF if str(exc) == "no DXF files" else str(exc))
+            self.error.emit(str(exc))
         except Exception as exc:          # noqa: BLE001 - surface anything else as a message
             self.error.emit(f"{type(exc).__name__}: {exc}")
         else:

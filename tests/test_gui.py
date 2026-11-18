@@ -1,4 +1,5 @@
 """Desktop window tests (offscreen Qt). Skipped when the `gui` extra is not installed."""
+import gc
 import os
 
 import pytest
@@ -10,7 +11,7 @@ pytest.importorskip("pytestqt")
 import yaml  # noqa: E402
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl  # noqa: E402
 from PySide6.QtGui import QDropEvent  # noqa: E402
-from PySide6.QtWidgets import QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from dxf_translate import __version__  # noqa: E402
 from dxf_translate.gui import texts  # noqa: E402
@@ -26,6 +27,10 @@ def window(qtbot):
     qtbot.addWidget(w)
     yield w
     w.wait_idle()
+    w.close()
+    w.deleteLater()
+    QApplication.processEvents()       # run DeferredDelete on the UI thread
+    gc.collect()
 
 
 def _run(qtbot, window, paths):
@@ -155,3 +160,71 @@ def test_open_buttons(qtbot, window, tmp_path, monkeypatch):
     window.open_dir_btn.click()
     window.open_review_btn.click()
     assert opened == [str(window.result.out_dir), str(window.result.review)]
+
+
+def test_gc_paused_during_job_and_worker_released(qtbot, window, tmp_path):
+    make_sheet(tmp_path / "a.dxf")
+    assert gc.isenabled()
+    with qtbot.waitSignal(window.job_done, timeout=T):
+        window.start([tmp_path])
+        assert not gc.isenabled()          # no GC pass can run on the worker thread
+    assert gc.isenabled()
+    assert window.worker is None and window._thread is None
+
+
+def test_gc_reenabled_after_error(qtbot, window, tmp_path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: None)
+    _run(qtbot, window, [tmp_path])        # no DXF -> error path
+    assert gc.isenabled()
+    assert window.worker is None and window._thread is None
+
+
+def _missing_result(tmp_path, order_dir):
+    from dxf_translate.pipeline import JobResult, MissingText
+    return JobResult(out_dir=tmp_path / "EN", order_dir=order_dir,
+                     missing=[MissingText("Невідома деталь", "phrase", ["a.dxf"])])
+
+
+def test_save_unexpected_error_shown(qtbot, window, tmp_path, monkeypatch):
+    from dxf_translate.gui import window as window_mod
+
+    def boom(*a):
+        raise RuntimeError("disk on fire")
+    monkeypatch.setattr(window_mod, "save_terms", boom)
+    calls = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a: calls.append(a))
+    window.last_paths = [tmp_path]
+    window.show_result(_missing_result(tmp_path, tmp_path))
+    window.missing_table.item(0, 3).setText("Mystery part")
+    window.save_btn.click()
+    assert calls and calls[0][2] == "RuntimeError: disk on fire"
+    assert not window.busy
+
+
+def test_save_without_order_dir_uses_out_parent(qtbot, window, tmp_path, monkeypatch):
+    saved = []
+    from dxf_translate.gui import window as window_mod
+    monkeypatch.setattr(window_mod, "save_terms", lambda p, t: saved.append(p))
+    monkeypatch.setattr(window, "start", lambda paths: None)
+    window.last_paths = [tmp_path]
+    window.show_result(_missing_result(tmp_path, None))
+    window.missing_table.item(0, 3).setText("Mystery part")
+    window.save_btn.click()
+    assert saved == [tmp_path / "glossary.yaml"]
+
+
+def test_worker_maps_no_inputs_by_type(qtbot, monkeypatch, tmp_path):
+    from dxf_translate.gui import worker as worker_mod
+    from dxf_translate.pipeline import NoInputsError
+
+    def other(*a, **k):
+        raise ValueError("no DXF files")    # same text, but not NoInputsError
+    monkeypatch.setattr(worker_mod, "run_job", other)
+    w = worker_mod.JobWorker([tmp_path])
+    with qtbot.waitSignal(w.error, timeout=T) as sig:
+        w.run()
+    assert sig.args == ["no DXF files"]
+    monkeypatch.setattr(worker_mod, "run_job", lambda *a, **k: (_ for _ in ()).throw(NoInputsError("x")))
+    with qtbot.waitSignal(w.error, timeout=T) as sig:
+        w.run()
+    assert sig.args == [texts.NO_DXF]

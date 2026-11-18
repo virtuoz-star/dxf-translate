@@ -15,6 +15,10 @@ from dxf_translate.translate import SheetResult, translate_file
 ProgressFn = Callable[[int, int, str], None]
 
 
+class NoInputsError(ValueError):
+    """No DXF files were found in the given paths."""
+
+
 @dataclass
 class MissingText:
     text: str
@@ -77,7 +81,7 @@ def run_job(paths: list[Path], out_dir: Path | None = None,
             progress: ProgressFn | None = None, review: bool = True) -> JobResult:
     dxfs, xlsx = collect_inputs(paths)
     if not dxfs:
-        raise ValueError("no DXF files")
+        raise NoInputsError("no DXF files")
     try:
         pair = pick_pair(xlsx)                   # GlossaryError propagates before any work
     except GlossaryError:
@@ -139,7 +143,7 @@ def check_overlaps_only(paths: list[Path], out_dir: Path | None = None) -> JobRe
     """Skip translation: check existing <out>/dxf/*_EN.dxf against their inputs."""
     dxfs, _ = collect_inputs(paths)
     if not dxfs:
-        raise ValueError("no DXF files")
+        raise NoInputsError("no DXF files")
     out = Path(out_dir) if out_dir else default_out(paths, dxfs)
     res = JobResult(out_dir=out)
     _check_overlaps(res, [(out / "dxf" / f"{s.stem}_EN.dxf", s) for s in dxfs

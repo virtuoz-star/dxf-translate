@@ -99,3 +99,24 @@ def test_bad_regex_rejected(tmp_path):
     f.write_text('substr:\n  - ["(unclosed", "x"]\n', encoding="utf-8")
     with pytest.raises(GlossaryError, match="glossary.yaml"):
         load_file(f)
+
+
+def test_empty_section_loads_as_empty(tmp_path):
+    f = tmp_path / "glossary.yaml"
+    f.write_text("phrases:\nnotes:\n", encoding="utf-8")
+    g = load_file(f)
+    assert g.phrases == {} and g.notes == {}
+
+
+def test_save_terms_into_empty_section(tmp_path):
+    f = tmp_path / "glossary.yaml"
+    f.write_text("phrases:\n", encoding="utf-8")
+    save_terms(f, {"phrases": {"Балка": "Beam"}})
+    assert load_file(f).phrases == {"Балка": "Beam"}
+
+
+def test_save_terms_non_mapping_section(tmp_path):
+    f = tmp_path / "glossary.yaml"
+    f.write_text("phrases:\n  - a\n", encoding="utf-8")
+    with pytest.raises(GlossaryError, match=r"glossary\.yaml.*phrases"):
+        save_terms(f, {"phrases": {"Балка": "Beam"}})

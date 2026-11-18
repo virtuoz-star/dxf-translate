@@ -32,6 +32,7 @@ class MainWindow(QMainWindow):
         self.result: JobResult | None = None
         self.worker: JobWorker | None = None
         self._thread: QThread | None = None
+        self._gc_paused = False
         self._build()
         self.setAcceptDrops(True)
         self._refresh_controls()
@@ -172,9 +173,12 @@ class MainWindow(QMainWindow):
         self.last_paths = [Path(p) for p in paths]
         self.log.appendPlainText(texts.LOG_START.format(paths=", ".join(map(str, self.last_paths))))
         self.progress.setRange(0, 0)              # indeterminate until the first sheet is done
-        # Collect pending cyclic garbage here, on the UI thread: if the collector ran inside
-        # the worker it could finalize stale Qt wrappers there and crash in their destructors.
+        # The cyclic GC must never run on the worker thread: it could finalize Qt wrappers
+        # there and crash in their C++ destructors. Collect now on the UI thread and pause
+        # automatic collection until the job ends (re-enabled in _end_job, UI thread).
         gc.collect()
+        self._gc_paused = gc.isenabled()
+        gc.disable()
         self._thread = QThread(self)
         self.worker = JobWorker(self.last_paths)
         self.worker.moveToThread(self._thread)
@@ -187,18 +191,22 @@ class MainWindow(QMainWindow):
 
     def wait_idle(self) -> None:
         """Block until a running job's thread has stopped (used on close and in tests)."""
+        self._end_job()
+
+    def _end_job(self) -> None:
+        """Stop the worker thread and release worker + thread on the UI thread, then resume GC.
+        The worker is Python-owned: dropping the last reference here deletes it on this
+        thread once its own thread has finished (no DeferredDelete to a dead event loop)."""
         if self._thread is not None:
             self._thread.quit()
             self._thread.wait()
-
-    def _stop_thread(self) -> None:
-        if self._thread is None:
-            return
-        self._thread.quit()
-        self._thread.wait()
-        self.worker.deleteLater()
-        self._thread.deleteLater()
-        self._thread = None
+            self._thread.deleteLater()        # lives on the UI thread, whose loop runs it
+            self._thread = None
+            self.worker = None
+        if self._gc_paused:
+            self._gc_paused = False
+            gc.enable()
+            gc.collect()
 
     @Slot(int, int, str)
     def _on_progress(self, done: int, total: int, name: str) -> None:
@@ -208,7 +216,7 @@ class MainWindow(QMainWindow):
 
     @Slot(object)
     def _on_finished(self, res: JobResult) -> None:
-        self._stop_thread()
+        self._end_job()
         self.progress.setRange(0, 1)
         self.progress.setValue(1)
         self.show_result(res)
@@ -217,7 +225,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_error(self, msg: str) -> None:
-        self._stop_thread()
+        self._end_job()
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
         self.log.appendPlainText(texts.LOG_ERROR.format(msg=msg))
@@ -309,11 +317,15 @@ class MainWindow(QMainWindow):
         if not terms:
             QMessageBox.information(self, texts.INFO_TITLE, texts.NOTHING_TO_SAVE)
             return
-        path = Path(self.result.order_dir) / "glossary.yaml"
+        order_dir = self.result.order_dir or self.result.out_dir.parent
+        path = Path(order_dir) / "glossary.yaml"
         try:
             save_terms(path, terms)
         except (GlossaryError, OSError) as exc:
             QMessageBox.critical(self, texts.ERROR_TITLE, str(exc))
+            return
+        except Exception as exc:              # noqa: BLE001 - never leave the user with nothing
+            QMessageBox.critical(self, texts.ERROR_TITLE, f"{type(exc).__name__}: {exc}")
             return
         n = sum(len(v) for v in terms.values())
         self.log.appendPlainText(texts.LOG_SAVED.format(n=n, path=path))
