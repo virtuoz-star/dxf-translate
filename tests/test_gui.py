@@ -23,7 +23,16 @@ T = 60000
 
 
 @pytest.fixture
-def window(qtbot):
+def opened_urls(monkeypatch):
+    from dxf_translate.gui import window as window_mod
+    urls = []
+    monkeypatch.setattr(window_mod.QDesktopServices, "openUrl",
+                        lambda u: urls.append(Path(u.toLocalFile())))
+    return urls
+
+
+@pytest.fixture
+def window(qtbot, opened_urls):
     w = MainWindow()
     qtbot.addWidget(w)
     yield w
@@ -465,3 +474,24 @@ def test_export_en_locked(qtbot, window, tmp_path, monkeypatch):
         PermissionError(13, "Permission denied")))
     window.export_en_btn.click()
     assert [k for k, _ in shown] == ["critical"] and texts.EN_LIST_FAILED in shown[0][1]
+
+
+def test_results_folder_opened_after_job(qtbot, window, tmp_path, opened_urls):
+    make_sheet(tmp_path / "a.dxf")
+    assert window.auto_open_cb.isChecked()
+    assert window.auto_open_cb.text() == "Відкривати папку з результатами після перекладу"
+    _run(qtbot, window, [tmp_path])
+    assert opened_urls == [tmp_path / "EN"]
+
+
+def test_results_folder_not_opened_when_unchecked(qtbot, window, tmp_path, opened_urls):
+    make_sheet(tmp_path / "a.dxf")
+    window.auto_open_cb.setChecked(False)
+    _run(qtbot, window, [tmp_path])
+    assert opened_urls == []
+
+
+def test_results_folder_not_opened_when_nothing_translated(qtbot, window, tmp_path, opened_urls):
+    (tmp_path / "bad.dxf").write_text("not a dxf")
+    _run(qtbot, window, [tmp_path])
+    assert window.result.sheets == [] and opened_urls == []

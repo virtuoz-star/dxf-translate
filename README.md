@@ -34,7 +34,8 @@ production list `EN/<file>_EN.xlsx`), checks text/line overlaps and builds a rev
 оберіть `.xlsx` («Обрати файл перекладу…» або перетягніть його у вікно; «×» прибирає), потім
 перетягніть папку з DXF-кресленнями у вікно (файли Excel у папці не читаються). Результат — у
 папці `EN` поруч із кресленнями, разом з англійським виробничим списком `EN/<файл>_EN.xlsx`
-(кнопка «Відкрити список»). Файл перекладу запам'ятовується, доки вікно відкрите.
+(кнопка «Відкрити список»). Папка з результатами відкривається сама після перекладу (прапорець
+«Відкривати папку з результатами після перекладу»). Файл перекладу запам'ятовується, доки вікно відкрите.
 Під час першого запуску Windows SmartScreen може попередити про невідомого видавця —
 натисніть «Докладніше» → «Усе одно запустити» (More info → Run anyway).
 Програма — один файл, який при кожному запуску спершу розпаковується, тому перший старт
@@ -113,7 +114,9 @@ file in the "Файл перекладу" input ("Обрати файл пере
 window; "×" clears it — a dropped `.xlsx` always goes there, everything else is the DXF input),
 then drop a folder with DXF drawings onto the window; results go to `EN` next to them,
 including the English production list `EN/<file>_EN.xlsx` ("Відкрити список"). The translation
-file is kept until the window closes, so "Save and re-run" reuses it. Missing Name/Material
+file is kept until the window closes, so "Save and re-run" reuses it. The results folder opens
+by itself when a run translated at least one sheet (checkbox "Відкривати папку з результатами
+після перекладу", on by default). Missing Name/Material
 cells of the translation file are listed read-only with the hint to fill them in the file.
 "Англійська версія для замовника" (in the translation-file input, no drawings needed) writes the
 English-only copy `<file>_EN.xlsx` next to the translation file and lists anything still

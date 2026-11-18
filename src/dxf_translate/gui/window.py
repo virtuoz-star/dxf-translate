@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QPalette
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QListWidget,
+    QCheckBox, QFileDialog, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QListWidget,
     QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
@@ -158,9 +158,12 @@ class MainWindow(QMainWindow):
         self.open_dir_btn.clicked.connect(self._open_dir)
         self.open_review_btn = QPushButton(texts.OPEN_REVIEW)
         self.open_review_btn.clicked.connect(self._open_review)
+        self.auto_open_cb = QCheckBox(texts.AUTO_OPEN)
+        self.auto_open_cb.setChecked(True)
         row.addWidget(self.open_dir_btn)
         row.addWidget(self.open_review_btn)
         row.addStretch(1)
+        row.addWidget(self.auto_open_cb)
         lay.addLayout(row)
 
         self.log = QPlainTextEdit()
@@ -292,6 +295,8 @@ class MainWindow(QMainWindow):
         self.progress.setValue(1)
         self.show_result(res)
         self._refresh_controls()
+        if self.auto_open_cb.isChecked() and res.sheets and res.out_dir.is_dir():
+            self._open(res.out_dir)
         self.job_done.emit()
 
     @Slot(str)
